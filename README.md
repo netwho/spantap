@@ -4,6 +4,15 @@
 
 # spantap
 
+[![Version](https://img.shields.io/badge/version-0.9.3-blue.svg)](pyproject.toml)
+[![License: GPL v2+](https://img.shields.io/badge/License-GPL%20v2%2B-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.9%2B%20%C2%B7%20stdlib%20only-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-compose-2496ED.svg?logo=docker&logoColor=white)](#docker)
+[![Linux](https://img.shields.io/badge/Host-Linux-FCC624.svg?logo=linux&logoColor=black)](#install)
+[![Wireshark](https://img.shields.io/badge/Wireshark-PCAP--over--IP-1679A7.svg)](https://www.wireshark.org/)
+[![Client](https://img.shields.io/badge/Wireshark%20client-macOS%20%7C%20Linux%20%7C%20Windows-555555.svg)](#the-gateway)
+[![AI-Assisted](https://img.shields.io/badge/AI--Assisted-Claude-D97757.svg)](#acknowledgments)
+
 *(Formerly `erspan-sim` / `erspan-gw` — same code, new name, your existing
 install carries over. See [Upgrading from erspan-sim](#upgrading-from-erspan-sim).)*
 
@@ -883,3 +892,10 @@ not — this is not a fresh install.
 ## Licence
 
 GPL-2.0-or-later. See `LICENSE`.
+
+## Acknowledgments
+
+- **Wireshark development team** — for PCAP-over-IP support and the ERSPAN
+  dissector that make the receiving end work without any configuration
+- **AI-Assisted** — yes (Claude by Anthropic) — used for the
+  container setup, installer scripting, and documentation
