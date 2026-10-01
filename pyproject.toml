@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spantap"
+version = "0.9.3"
+description = "SPAN/ERSPAN and local-interface capture to PCAP-over-IP, plus an ERSPAN Type II simulator (formerly erspan-sim)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "GPL-2.0-or-later" }
+authors = [{ name = "Walter Hofstetter" }]
+keywords = ["erspan", "span", "gre", "pcap", "wireshark", "packet-analysis", "tap"]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/netwho/spantap"
+Repository = "https://github.com/netwho/spantap"
+
+[project.scripts]
+spantap-sim = "spantap.cli:main"
+spantap-gw = "spantap.gateway.cli:main"
+spantap-lite = "spantap.lite.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["spantap*"]
+
+[tool.setuptools.package-data]
+"spantap.webui" = ["static/*.html"]

@@ -1,0 +1,3027 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>spantap</title>
+<style>
+:root {
+  color-scheme: light;
+  --plane:        #f9f9f7;
+  --surface:      #fcfcfb;
+  --ink:          #0b0b0b;
+  --ink-2:        #52514e;
+  --muted:        #898781;
+  --grid:         #e1e0d9;
+  --axis:         #c3c2b7;
+  --border:       rgba(11,11,11,0.10);
+  --series-1:     #2a78d6;
+  --series-2:     #eb6834;
+  --series-3:     #1baf7a;
+  --series-4:     #eda100;
+  --good:         #0ca30c;
+  --warning:      #fab219;
+  --critical:     #d03b3b;
+  --field:        #ffffff;
+  --shadow:       0 1px 2px rgba(11,11,11,.06), 0 4px 14px rgba(11,11,11,.05);
+  --radius:       10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
+    --muted: #898781; --grid: #2c2c2a; --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --field: #232322;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
+  --muted: #898781; --grid: #2c2c2a; --axis: #383835;
+  --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --field: #232322;
+  --shadow: 0 1px 2px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.35);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--plane); color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { margin: 0; font-weight: 600; }
+button, input, select { font: inherit; color: inherit; }
+
+/* ---------- header ---------- */
+header {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 12px 16px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
+.brand h1 { font-size: 16px; letter-spacing: -0.01em; }
+.brand .ver { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.spacer { flex: 1 1 auto; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px 5px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--plane);
+  font-size: 12.5px; font-weight: 500; white-space: nowrap;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.pill[data-state="running"] .dot { background: var(--good); animation: pulse 1.6s ease-in-out infinite; }
+.pill[data-state="error"] .dot { background: var(--critical); }
+.pill[data-state="stopping"] .dot { background: var(--warning); }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+@media (prefers-reduced-motion: reduce) { .pill .dot { animation: none !important; } }
+
+button {
+  padding: 7px 13px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--plane); cursor: pointer; font-weight: 500;
+}
+button:hover:not(:disabled) { border-color: var(--axis); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--series-1); border-color: transparent; color: #fff; }
+button.danger  { background: var(--critical); border-color: transparent; color: #fff; }
+button.icon { padding: 7px 9px; }
+button.ghost { padding: 6px 10px; font-size: 12px; font-weight: 500; }
+button.ghost.danger { background: transparent; color: var(--critical);
+                      border-color: var(--border); }
+button.ghost.danger:hover:not(:disabled) { border-color: var(--critical); }
+
+/* who is signed in, in the header */
+.who {
+  font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--plane); border: 1px solid var(--border); color: var(--muted);
+}
+
+/* a small table of records — one row per account */
+table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.grid td {
+  padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle;
+}
+table.grid tr:last-child td { border-bottom: 0; }
+table.grid td.name { font-weight: 600; }
+table.grid td.meta { color: var(--muted); font-size: 12px; }
+table.grid td.act { text-align: right; white-space: nowrap; }
+table.grid td.act button { margin-left: 6px; }
+table.grid tr.off td.name { color: var(--muted); text-decoration: line-through; }
+table.grid tr.me td.name::after {
+  content: " (you)"; font-weight: 400; color: var(--muted); text-decoration: none;
+}
+/* A reader that is still attached. Deliberately NOT .me — that one appends
+   "(you)", which is true of an account and nonsense about a Wireshark. */
+table.grid tr.live td.name::after {
+  content: " \2022 attached"; font-weight: 400; color: var(--good);
+}
+
+/* a row of controls that must stay on one line and wrap gracefully */
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row > select, .row > input[type="file"] { min-width: 0; }
+/* Left unstyled, a file input is the one control on the page that doesn't
+   look like it belongs to this design system — no border, no background, a
+   browser-native button butted up against a huge stretch of dead space
+   where every other input would have filled the row (it's excluded from the
+   width:100% rule below on purpose, since sizing it the same way pushes its
+   native button flush against the filename text with no gap at all in some
+   browsers). Giving it the same field chrome, and styling the button part it
+   does own via ::file-selector-button, makes it read as one control instead
+   of a stray browser widget dropped into the row. */
+input[type="file"] {
+  font: inherit; font-size: 12.5px; color: var(--ink-2);
+  padding: 5px 10px 5px 5px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--field); width: 100%; min-width: 0;
+}
+input[type="file"]::file-selector-button {
+  font: inherit; font-weight: 500; font-size: 12.5px; color: inherit;
+  padding: 6px 12px; margin-right: 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--plane); cursor: pointer;
+}
+input[type="file"]::file-selector-button:hover { border-color: var(--axis); }
+input[type="file"]:disabled { opacity: .55; cursor: not-allowed; }
+input[type="file"]:disabled::file-selector-button { cursor: not-allowed; }
+input[type="file"]:focus-visible {
+  outline: 2px solid var(--series-1); outline-offset: 1px;
+}
+
+.progress {
+  height: 6px; margin-top: 8px; border-radius: 3px;
+  background: var(--border); overflow: hidden;
+}
+.progress > div {
+  height: 100%; width: 0; background: var(--series-1);
+  transition: width .12s linear;
+}
+@media (prefers-reduced-motion: reduce) { .progress > div { transition: none; } }
+
+/* ---------- layout ----------
+   Two persistent panes: the left one switches between Simulator, Gateway
+   and Settings (exactly one <main> visible at a time, same as before);
+   the right one never switches — it always shows both the Simulator's and
+   the Gateway's activity, stacked, regardless of which tab is selected on
+   the left. A <main> in the left pane holds exactly one .col section now
+   (its old second "monitor" column moved to the right pane for good), so
+   it just participates directly in the left pane's own single column via
+   display:contents rather than laying out a grid of its own. */
+.appgrid {
+  display: grid; gap: 16px; padding: 16px; align-items: start;
+  grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
+  max-width: 1500px; margin: 0 auto;
+}
+@media (max-width: 960px) { .appgrid { grid-template-columns: 1fr; } }
+.leftpane, .rightpane { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.leftpane main { display: contents; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.rightpane-heading {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); margin: 4px 2px 0;
+}
+.rightpane .col:first-child .rightpane-heading { margin-top: 0; }
+
+/* Simulator/Gateway activity groups are hidden (via .hide) while that
+   process is idle, so an idle process's empty stats don't sit next to the
+   other one's real data. #rpEmpty stands in when both are idle. */
+#rpEmpty {
+  border: 1px dashed var(--border); border-radius: 10px;
+  padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px;
+}
+
+/* the always-on switch inside the Simulator/Gateway panel, in addition to
+   (not instead of) the header's own Start/Stop buttons */
+.runswitch {
+  display: flex; align-items: center; gap: 10px;
+}
+.runswitch .label { font-weight: 600; font-size: 14px; }
+.runswitch .statetext { font-size: 12px; color: var(--muted); margin-right: auto; }
+.toggle { position: relative; display: inline-block; width: 40px; height: 24px; flex: none; }
+.toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.toggle .slider {
+  position: absolute; inset: 0; background: var(--axis); border-radius: 999px;
+  transition: background .15s ease; pointer-events: none;
+}
+.toggle .slider::before {
+  content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px;
+  background: #fff; border-radius: 50%; transition: transform .15s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+.toggle input:checked + .slider { background: var(--good); }
+.toggle input:checked + .slider::before { transform: translateX(16px); }
+.toggle input:disabled + .slider { opacity: .5; }
+.toggle input:focus-visible + .slider { outline: 2px solid var(--series-1); outline-offset: 2px; }
+
+/* a small LED on the Simulator/Gateway tab so its running state is visible
+   even while a different tab is selected. Settings gets an invisible dot of
+   the same size (.tabdot-spacer) rather than no dot at all, so its label
+   sits at the same baseline and the same horizontal offset as the other
+   two — otherwise the row reads as misaligned even though every button is
+   the same width. */
+.tabdot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 6px; background: var(--muted); flex: none;
+  vertical-align: middle;
+}
+.tabdot[data-state="running"] { background: var(--good); animation: pulse 1.6s ease-in-out infinite; }
+.tabdot[data-state="error"] { background: var(--critical); }
+.tabdot[data-state="stopping"] { background: var(--warning); }
+.tabdot-spacer { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .tabdot { animation: none !important; } }
+/* The dot sits inline before the label; at a narrow enough window the two
+   used to wrap onto separate lines (dot above, label below) while the
+   Settings tab next to them — no dot — stayed on one line, which is what
+   actually broke the alignment. Keep every tab's content on one line. */
+.seg.tabs button { white-space: nowrap; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.card > h2 {
+  font-size: 13px; letter-spacing: .02em; text-transform: uppercase;
+  color: var(--ink-2); padding: 12px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.card > h2 .hint { text-transform: none; letter-spacing: 0; font-weight: 400;
+  color: var(--muted); font-size: 12px; margin-left: auto; }
+.card .body { padding: 14px 16px; }
+
+/* ---------- fields ---------- */
+/* auto-fill, not auto-fit: fit computes columns from the container width but
+   then COLLAPSES any track a card doesn't have enough fields to fill and
+   redistributes that width to the fields it does have — so a two-field card
+   (BUFFER: Depth, Size) gets noticeably wider inputs, with its second column
+   starting well to the right of where a three-field card's (RECEIVE ERSPAN,
+   SERVE TO WIRESHARK) second column starts, breaking the vertical column
+   rhythm down a page that stacks cards with different field counts. fill
+   keeps the empty trailing track instead of collapsing it, so every .fields
+   grid at the same container width gets identical column boundaries — a
+   short row just leaves a gap on the right rather than stretching to fill
+   it. Confirmed by measuring actual input bounding boxes before/after: same
+   x for column 1, same x for column 2, across every card on a tab regardless
+   of how many fields each one has. */
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field label { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.field .note { font-size: 11.5px; color: var(--muted); }
+input[type=text], input[type=number], select {
+  padding: 7px 9px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--field); width: 100%; min-width: 0;
+}
+input:focus-visible, select:focus-visible, button:focus-visible {
+  outline: 2px solid var(--series-1); outline-offset: 1px;
+}
+input[type=number] { font-variant-numeric: tabular-nums; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.check input { width: 15px; height: 15px; accent-color: var(--series-1); }
+
+.seg { display: flex; gap: 2px; padding: 3px; background: var(--plane);
+       border: 1px solid var(--border); border-radius: 9px; }
+.seg button { flex: 1; border: none; background: none; border-radius: 6px;
+              padding: 7px 6px; font-size: 13px; color: var(--ink-2); }
+.seg button[aria-pressed=true] { background: var(--surface); color: var(--ink);
+              box-shadow: var(--shadow); font-weight: 600; }
+.seg.tabs { flex: none; }
+.seg.tabs button { padding: 6px 16px; }
+.hgroup { display: inline-flex; align-items: center; gap: 8px; }
+
+.cmd { display: flex; align-items: center; gap: 8px; margin-top: 12px;
+       background: var(--plane); border: 1px solid var(--border); border-radius: 8px;
+       padding: 9px 10px; }
+.cmd code { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            flex: 1; overflow-x: auto; white-space: nowrap; }
+.cmd button { padding: 4px 9px; font-size: 12px; }
+
+.meter { height: 8px; border-radius: 4px; background: var(--plane); overflow: hidden;
+         margin-top: 8px; border: 1px solid var(--border); }
+.meter span { display: block; height: 100%; background: var(--series-1);
+              border-radius: 0 4px 4px 0; transition: width .3s ease; }
+.meter.hot span { background: var(--critical); }
+
+/* ---------- filter explanation ---------- */
+.bpf {
+  font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--plane); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 11px; word-break: break-word; white-space: pre-wrap; color: var(--ink);
+}
+.clauses { list-style: none; margin: 10px 0 0; padding: 0; display: flex;
+           flex-direction: column; gap: 9px; }
+.clauses li { display: grid; grid-template-columns: 16px 1fr; gap: 9px; font-size: 12.5px; }
+.clauses .lock { color: var(--series-1); font-size: 13px; line-height: 1.45; }
+.clauses .opt { color: var(--muted); }
+.clauses code { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                color: var(--ink); display: block; }
+.clauses .why { color: var(--muted); }
+
+/* ---------- monitor ---------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 1px;
+         background: var(--border); }
+.tile { background: var(--surface); padding: 14px 16px; }
+.tile .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.tile .v { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; }
+.tile .u { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.tile .s { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
+.chart { padding: 12px 14px 6px; }
+.chart h3 { font-size: 12px; color: var(--ink-2); font-weight: 600; display: flex; gap: 8px; }
+.chart h3 .now { margin-left: auto; color: var(--ink); font-variant-numeric: tabular-nums; }
+.chart canvas { display: block; width: 100%; height: 112px; }
+.chart + .chart { border-top: 1px solid var(--border); }
+
+.protogroup + .protogroup { margin-top: 16px; }
+.protogroup h3 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em;
+                 color: var(--muted); margin-bottom: 8px; }
+.bars { display: flex; flex-direction: column; gap: 2px; }
+.bar { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 10px; }
+.bar .n { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis;
+          white-space: nowrap; }
+.bar .track { height: 16px; background: var(--plane); border-radius: 4px; overflow: hidden; }
+.bar .fill { height: 100%; border-radius: 0 4px 4px 0; min-width: 2px;
+             transition: width .3s ease; }
+.bar .v { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums;
+          min-width: 88px; text-align: right; }
+.bar:hover .track { outline: 2px solid var(--border); }
+.g1 .fill { background: var(--series-1); }
+.g2 .fill { background: var(--series-2); }
+.g3 .fill { background: var(--series-3); }
+.g4 .fill { background: var(--series-4); }
+
+.empty { color: var(--muted); font-size: 13px; padding: 6px 0; }
+
+/* ---------- misc ---------- */
+.banner { display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px;
+          border-radius: 8px; font-size: 12.5px; border: 1px solid var(--border);
+          background: var(--plane); }
+.banner.warn { border-color: var(--warning); }
+.banner.err  { border-color: var(--critical); }
+.banner.ok   { border-color: var(--good); }
+.banner .ic { flex: none; font-weight: 700; }
+.banner.warn .ic { color: var(--warning); }
+.banner.err .ic  { color: var(--critical); }
+.banner.ok .ic   { color: var(--good); }
+/* Each tab has its own banner container (#banners, #gwBanners, #outBanners,
+   #setBanners) so showBanner()/clearBanners() can target one tab without
+   touching the others — but this rule used to only match the literal id
+   "banners", the Simulator tab's own container. On every other tab the
+   empty container never matched :empty, so it stayed in the .col flex flow
+   and its 16px gap to the next child pushed that tab's left column down
+   relative to the right column, which has no leading spacer at all — the
+   Simulator tab looked fine only because it's the one tab this rule ever
+   applied to. The shared class fixes all four containers at once. */
+.banners { display: flex; flex-direction: column; gap: 8px; }
+.banners:empty { display: none; }
+
+#toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+         display: flex; flex-direction: column; gap: 8px; z-index: 60; }
+.toast { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--critical);
+         border-radius: 8px; padding: 10px 14px; box-shadow: var(--shadow); font-size: 13px;
+         max-width: 520px; }
+.toast.ok { border-left-color: var(--good); }
+
+#tip { position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s;
+       background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+       box-shadow: var(--shadow); padding: 7px 10px; font-size: 12px; z-index: 50;
+       font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hide { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>spantap</h1><span class="ver" id="ver"></span>
+  </div>
+  <div class="seg tabs" id="viewTabs" role="group" aria-label="view">
+    <button data-view="sim" aria-pressed="true"><span class="tabdot" id="simTabDot" data-state="idle"></span>Simulator</button>
+    <button data-view="gw" aria-pressed="false"><span class="tabdot" id="gwTabDot" data-state="idle"></span>Gateway</button>
+    <button data-view="set" aria-pressed="false"><span class="tabdot tabdot-spacer" aria-hidden="true"></span>Settings</button>
+  </div>
+  <span class="spacer"></span>
+
+  <span class="hgroup" id="simControls">
+    <select id="profileSelect" style="width:auto;min-width:140px" title="saved profiles"></select>
+    <button id="btnSave" title="Save to the selected profile">Save</button>
+    <button id="btnSaveAs" title="Save as a new profile">Save as…</button>
+    <button id="btnDelete" title="Delete the selected profile">Delete</button>
+  </span>
+
+  <span class="hgroup hide" id="whoGroup">
+    <span class="who" id="whoName" title="signed in"></span>
+    <button class="ghost" id="btnLogout">Sign out</button>
+  </span>
+
+  <button class="icon" id="btnTheme" title="Toggle light / dark" aria-label="Toggle light or dark">◐</button>
+
+  <span class="hgroup" id="simRun">
+    <span class="pill" id="statePill" data-state="idle"><span class="dot"></span><span id="stateText">idle</span></span>
+    <button class="primary" id="btnStart">Start</button>
+    <button class="danger hide" id="btnStop">Stop</button>
+  </span>
+  <span class="hgroup hide" id="gwRun">
+    <button id="btnGwSave" title="Save this gateway configuration">Save</button>
+    <span class="pill" id="gwPill" data-state="idle"><span class="dot"></span><span id="gwStateText">idle</span></span>
+    <button class="primary" id="btnGwStart">Start</button>
+    <button class="danger hide" id="btnGwStop">Stop</button>
+  </span>
+  <span class="hgroup hide" id="setRun">
+    <span class="pill" id="setPill"><span class="dot"></span><span id="setPillText">in effect</span></span>
+    <button class="primary" id="btnSetSave">Save settings</button>
+  </span>
+</header>
+
+<div class="appgrid">
+<div class="leftpane">
+
+<main id="view-sim">
+  <!-- ================= configuration ================= -->
+  <section class="col">
+    <div id="banners" class="banners"></div>
+
+    <div class="card runswitch">
+      <span class="tabdot" id="simSwitchDot" data-state="idle"></span>
+      <span class="label">Simulator</span>
+      <span class="statetext" id="simSwitchText">idle</span>
+      <label class="toggle" title="Start or stop the simulator">
+        <input type="checkbox" id="simSwitch">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Source<span class="hint" id="sourceHint"></span></h2>
+      <div class="body">
+        <div class="seg" id="sourceSeg" role="group" aria-label="packet source">
+          <button data-source="synth" aria-pressed="true">Synthetic</button>
+          <button data-source="replay" aria-pressed="false">Capture file</button>
+          <button data-source="live" aria-pressed="false">Interface</button>
+        </div>
+
+        <div id="pane-synth" class="pane" style="margin-top:14px">
+          <div class="fields">
+            <div class="field">
+              <label for="f-scenario">Traffic pattern</label>
+              <select id="f-scenario" data-path="synth.scenario"></select>
+            </div>
+            <div class="field">
+              <label for="f-spps">Rate (pkt/s)</label>
+              <input type="number" id="f-spps" data-path="synth.pps" min="0" step="10">
+              <span class="note">0 = as fast as possible</span>
+            </div>
+            <div class="field">
+              <label for="f-scount">Stop after</label>
+              <input type="number" id="f-scount" data-path="synth.count" min="0" step="100">
+              <span class="note">0 = run until stopped</span>
+            </div>
+            <div class="field">
+              <label for="f-v6">IPv6 share</label>
+              <input type="number" id="f-v6" data-path="synth.v6_ratio" min="0" max="1" step="0.05">
+            </div>
+            <div class="field">
+              <label for="f-svlan">Tag frames with VLAN</label>
+              <input type="number" id="f-svlan" data-path="synth.vlan" min="0" max="4095">
+              <span class="note">0 = untagged</span>
+            </div>
+            <div class="field">
+              <label for="f-seed">Seed</label>
+              <input type="number" id="f-seed" data-path="synth.seed" min="0">
+              <span class="note">0 = fixed default</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="pane-replay" class="pane hide" style="margin-top:14px">
+          <div class="fields">
+            <div class="field wide">
+              <label for="f-capture">Uploaded captures</label>
+              <div class="row">
+                <select id="f-capture" style="flex:1 1 auto"></select>
+                <button type="button" class="ghost" id="b-cap-refresh" title="Re-read the capture directory">Refresh</button>
+                <button type="button" class="ghost danger" id="b-cap-delete">Delete</button>
+              </div>
+              <span class="note" id="cap-note"></span>
+            </div>
+            <div class="field wide">
+              <label for="f-upload">Upload a capture from this browser</label>
+              <div class="row">
+                <input type="file" id="f-upload" accept=".pcap,.pcapng,.cap"
+                       style="flex:1 1 auto">
+                <button type="button" id="b-upload">Upload</button>
+              </div>
+              <div id="up-bar" class="progress hide"><div id="up-fill"></div></div>
+              <span class="note" id="up-note">
+                The file is sent to the host running spantap, not read by your browser.
+              </span>
+            </div>
+            <div class="field wide">
+              <label for="f-file">Capture file on this host</label>
+              <input type="text" id="f-file" data-path="replay.file"
+                     placeholder="/var/lib/spantap/sample.pcapng" spellcheck="false">
+              <span class="note">.pcap or .pcapng — path as seen by the machine running
+                spantap. Picking or uploading above fills this in; you can also type the
+                path of a file that is already on that host.</span>
+            </div>
+            <div class="field wide">
+              <label class="check"><input type="checkbox" id="f-endless"> Endless loop</label>
+              <span class="note">restart the file as soon as it ends</span>
+            </div>
+            <div class="field">
+              <label for="f-passes">Passes</label>
+              <input type="number" id="f-passes" data-path="replay.loop" min="1" step="1">
+            </div>
+            <div class="field">
+              <label for="f-speed">Speed</label>
+              <input type="number" id="f-speed" data-path="replay.speed" min="0" step="0.5">
+              <span class="note">1 = original timing, 0 = flat out</span>
+            </div>
+            <div class="field">
+              <label for="f-rpps">Fixed rate (pkt/s)</label>
+              <input type="number" id="f-rpps" data-path="replay.pps" min="0" step="10">
+              <span class="note">overrides speed</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="pane-live" class="pane hide" style="margin-top:14px">
+          <div class="fields">
+            <div class="field wide">
+              <label for="f-iface">Interface to mirror</label>
+              <select id="f-iface" data-path="live.iface"></select>
+            </div>
+            <div class="field wide">
+              <label for="f-filter">Extra capture filter (optional)</label>
+              <input type="text" id="f-filter" data-path="live.filter"
+                     placeholder="not port 22 and not net 10.0.0.0/8" spellcheck="false">
+              <span class="note">ANDed with the exclusions below — it can narrow, never re-admit</span>
+            </div>
+            <div class="field">
+              <label for="f-snap">Snap length</label>
+              <input type="number" id="f-snap" data-path="live.snaplen" min="0" step="64">
+              <span class="note">0 = whole frames</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>ERSPAN target<span class="hint" id="mtuHint"></span></h2>
+      <div class="body">
+        <div class="fields">
+          <div class="field">
+            <label for="f-dst">Receiver IP</label>
+            <input type="text" id="f-dst" data-path="target.dst" placeholder="10.0.0.5" spellcheck="false">
+            <span class="note">where the GRE tunnel points</span>
+          </div>
+          <div class="field">
+            <label for="f-src">Source IP</label>
+            <input type="text" id="f-src" data-path="target.src" placeholder="auto" spellcheck="false">
+            <span class="note">blank = from the routing table</span>
+          </div>
+          <div class="field">
+            <label for="f-session">Session ID</label>
+            <input type="number" id="f-session" data-path="target.session_id" min="0" max="1023">
+          </div>
+          <div class="field">
+            <label for="f-vlan">VLAN in ERSPAN header</label>
+            <input type="number" id="f-vlan" data-path="target.vlan" min="0" max="4095">
+          </div>
+          <div class="field">
+            <label for="f-mtu">Path MTU</label>
+            <input type="number" id="f-mtu" data-path="target.mtu" min="576" max="65535" step="4">
+          </div>
+          <div class="field">
+            <label for="f-ttl">TTL</label>
+            <input type="number" id="f-ttl" data-path="target.ttl" min="1" max="255">
+          </div>
+          <div class="field">
+            <label for="f-dscp">DSCP</label>
+            <input type="number" id="f-dscp" data-path="target.dscp" min="0" max="63">
+          </div>
+          <div class="field">
+            <label for="f-cos">COS</label>
+            <input type="number" id="f-cos" data-path="target.cos" min="0" max="7">
+          </div>
+          <div class="field">
+            <label for="f-index">Port index</label>
+            <input type="number" id="f-index" data-path="target.index" min="0" max="1048575">
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <label class="check"><input type="checkbox" id="f-df" data-path="target.df"> Don't fragment</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="card-exclusions">
+      <h2>Exclusions<span class="hint">always applied to a live capture</span></h2>
+      <div class="body">
+        <div class="fields" style="margin-bottom:12px">
+          <div class="field">
+            <label for="f-poip">PCAP-over-IP port</label>
+            <input type="number" id="f-poip" data-path="exclusions.pcapoverip_port" min="0" max="65535">
+            <span class="note">the gateway's Wireshark listener</span>
+          </div>
+          <div class="field">
+            <label for="f-poiph">Gateway host (optional)</label>
+            <input type="text" id="f-poiph" data-path="exclusions.pcapoverip_host"
+                   placeholder="any host" spellcheck="false">
+          </div>
+          <div class="field wide">
+            <label class="check"><input type="checkbox" id="f-ssh" data-path="exclusions.exclude_ssh">
+              Also exclude SSH (tcp/22)</label>
+            <span class="note">keeps your own terminal session out of the mirror</span>
+          </div>
+        </div>
+        <div class="bpf" id="bpfText">—</div>
+        <ul class="clauses" id="bpfClauses"></ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Output</h2>
+      <div class="body">
+        <div class="seg" id="outputSeg" role="group" aria-label="output">
+          <button data-mode="wire" aria-pressed="true">Send on the wire</button>
+          <button data-mode="pcap" aria-pressed="false">Write pcap file</button>
+          <button data-mode="dry" aria-pressed="false">Dry run</button>
+        </div>
+        <div class="field wide hide" id="pcapPathField" style="margin-top:12px">
+          <label for="f-pcap">Output file</label>
+          <input type="text" id="f-pcap" data-path="output.pcap_path"
+                 placeholder="/tmp/erspan.pcap" spellcheck="false">
+          <span class="note">raw-IP link type; opens straight in Wireshark, needs no privileges</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ================= gateway ================= -->
+<main id="view-gw" class="hide">
+  <section class="col">
+    <div id="gwBanners" class="banners"></div>
+
+    <div class="card runswitch">
+      <span class="tabdot" id="gwSwitchDot" data-state="idle"></span>
+      <span class="label">Gateway</span>
+      <span class="statetext" id="gwSwitchText">idle</span>
+      <label class="toggle" title="Start or stop the gateway">
+        <input type="checkbox" id="gwSwitch">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Source<span class="hint" id="gwSourceHint"></span></h2>
+      <div class="body">
+        <div class="seg" id="gwSourceTabs" role="group" aria-label="gateway source">
+          <button data-gwsource="erspan" aria-pressed="true">ERSPAN receiver</button>
+          <button data-gwsource="live" aria-pressed="false">Local interface</button>
+          <button data-gwsource="replay" aria-pressed="false">Pcap replay</button>
+        </div>
+        <p class="note" style="margin:10px 0 0" id="gwSourceNote"></p>
+      </div>
+    </div>
+
+    <div class="card" id="gwLiveCard">
+      <h2>Local interface<span class="hint">captured here, not mirrored to here</span></h2>
+      <div class="body">
+        <div class="fields">
+          <div class="field wide">
+            <label for="g-iface">Interface</label>
+            <select id="g-iface" data-gw="live.iface"></select>
+            <span class="note" id="g-iface-note"></span>
+          </div>
+          <div class="field wide">
+            <label for="g-filter">Capture filter</label>
+            <input type="text" id="g-filter" data-gw="live.filter" spellcheck="false"
+                   placeholder="e.g. host 10.0.0.5 and not port 53">
+            <span class="note">ANDed after the exclusions below — it can narrow
+              what is captured, never re-admit what they remove</span>
+          </div>
+          <div class="field">
+            <label for="g-lsnap">Snap length</label>
+            <input type="number" id="g-lsnap" data-gw="live.snaplen" min="0" max="262144" step="64">
+            <span class="note">0 = whole frames</span>
+          </div>
+          <div class="field wide">
+            <label class="check"><input type="checkbox" id="g-exgre" data-gw="live.exclude_gre">
+              Skip GRE on the wire</label>
+            <span class="note">turn on if this host is also an ERSPAN destination,
+              so each mirrored frame is not seen both wrapped and unwrapped</span>
+          </div>
+          <div class="field wide">
+            <label class="check"><input type="checkbox" id="g-exssh" data-gw="live.exclude_ssh">
+              Skip my SSH session (tcp/22)</label>
+          </div>
+        </div>
+        <div id="gwExclusions" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <div class="card" id="gwReplayCard">
+      <h2>Pcap replay<span class="hint">for a demo, or troubleshooting delivery</span></h2>
+      <div class="body">
+        <div class="fields">
+          <div class="field wide">
+            <label for="g-replay-select">Stored capture</label>
+            <select id="g-replay-select"></select>
+            <span class="note">shares the same store as the simulator's replay
+              source</span>
+          </div>
+          <div class="field wide">
+            <label for="g-replay-upload">Upload a capture from this browser</label>
+            <div class="row">
+              <input type="file" id="g-replay-upload" accept=".pcap,.pcapng,.cap"
+                     style="flex:1 1 auto">
+              <button type="button" id="b-g-replay-upload">Upload</button>
+            </div>
+            <div id="g-up-bar" class="progress hide"><div id="g-up-fill"></div></div>
+            <span class="note" id="g-up-note">
+              The file is sent to the host running spantap, not read by your browser.
+            </span>
+          </div>
+          <div class="field wide">
+            <label for="g-replay-file">Or a path on this host</label>
+            <input type="text" id="g-replay-file" data-gw="replay.file" spellcheck="false"
+                   placeholder="/var/lib/spantap/captures/demo.pcapng">
+          </div>
+          <div class="field">
+            <label for="g-replay-loop">Loop</label>
+            <input type="number" id="g-replay-loop" data-gw="replay.loop" min="0" step="1">
+            <span class="note">0 = forever</span>
+          </div>
+          <div class="field wide">
+            <label class="check"><input type="checkbox" id="g-replay-pace" data-gw="replay.pace">
+              Pace like the original capture</label>
+            <span class="note">roughly — not a precise replay of the recorded
+              timing, just enough to not dump the whole file at once. Off
+              delivers frames as fast as the ring will take them.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="gwErspanCard">
+      <h2>Receive ERSPAN<span class="hint">raw socket, IP protocol 47</span></h2>
+      <div class="body">
+        <div class="fields">
+          <div class="field">
+            <label for="g-rbind">Receive on</label>
+            <input type="text" id="g-rbind" data-gw="receive.bind" spellcheck="false">
+            <span class="note">0.0.0.0 = any local address, including loopback</span>
+          </div>
+          <div class="field">
+            <label for="g-session">Session ID</label>
+            <input type="text" id="g-session" data-gw="receive.session_id" placeholder="all"
+                   spellcheck="false">
+            <span class="note">blank = every session</span>
+          </div>
+          <div class="field">
+            <label for="g-from">Only from</label>
+            <input type="text" id="g-from" data-gw="receive.from_host" placeholder="any source"
+                   spellcheck="false">
+            <span class="note">blank = every mirroring source</span>
+          </div>
+          <div class="field">
+            <label for="g-rcvbuf">Socket buffer (MiB)</label>
+            <input type="number" id="g-rcvbuf" data-gw="receive.rcvbuf_mib" min="1" max="512">
+            <span class="note">absorbs bursts before the kernel drops</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Serve to Wireshark<span class="hint">PCAP-over-IP, one client at a time</span></h2>
+      <div class="body">
+        <div class="fields">
+          <div class="field">
+            <label for="g-sbind">Serve on</label>
+            <input type="text" id="g-sbind" data-gw="serve.bind" spellcheck="false">
+            <span class="note">127.0.0.1 — use an SSH tunnel for remote Wireshark</span>
+          </div>
+          <div class="field">
+            <label for="g-port">Port</label>
+            <input type="number" id="g-port" data-gw="serve.port" min="1" max="65535">
+          </div>
+          <div class="field">
+            <label for="g-snap">Snap length</label>
+            <input type="number" id="g-snap" data-gw="serve.snaplen" min="0" max="262144" step="64">
+            <span class="note">0 = whole frames</span>
+          </div>
+        </div>
+        <div class="cmd">
+          <code id="gwCmd">wireshark -k -i TCP@127.0.0.1:57012</code>
+          <button id="btnCopyCmd" title="Copy to clipboard">Copy</button>
+        </div>
+        <span class="note hide" id="gwCmdNote" style="display:block;margin-top:8px"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Buffer<span class="hint">drop-oldest</span></h2>
+      <div class="body">
+        <div class="fields">
+          <div class="field">
+            <label for="g-frames">Depth (frames)</label>
+            <input type="number" id="g-frames" data-gw="buffer.max_frames" min="64" step="512">
+          </div>
+          <div class="field">
+            <label for="g-mib">Size (MiB)</label>
+            <input type="number" id="g-mib" data-gw="buffer.max_mib" min="1" max="4096">
+          </div>
+        </div>
+        <p class="note" style="margin:10px 0 0">
+          A tap is never slowed down by whoever is reading it. If Wireshark cannot
+          keep up, the oldest frames are dropped and counted — visibly — rather
+          than blocking the receiver and pushing the loss into the kernel where
+          nobody can see it.
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ================= settings ================= -->
+<main id="view-set" class="hide">
+  <section class="col">
+    <div id="setBanners" class="banners"></div>
+
+    <div class="card">
+      <h2>How this page is reached<span class="hint" id="setEffective"></span></h2>
+      <div class="body">
+        <div class="fields">
+          <div class="field">
+            <label for="s-bind">Listen on</label>
+            <select id="s-bind"></select>
+            <span class="note">loopback means SSH tunnel only</span>
+          </div>
+          <div class="field">
+            <label for="s-port">Port</label>
+            <input type="number" id="s-port" min="1" max="65535">
+          </div>
+          <div class="field wide">
+            <label for="s-hosts">Also answer to these names</label>
+            <input type="text" id="s-hosts" spellcheck="false"
+                   placeholder="nettools, nettools.lab.example">
+            <span class="note">Addresses of this host are accepted automatically.
+              DNS names are not — listing them here is what lets you use a name in
+              the URL, and what keeps a hostile page from pointing a name at this
+              server.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Access token<span class="hint">generated for you if left blank and needed</span></h2>
+      <div class="body">
+        <div class="fields">
+          <div class="field wide">
+            <label for="s-token">Token</label>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="s-token" spellcheck="false" autocomplete="off"
+                     placeholder="leave blank to keep the current one">
+              <button id="btnGenToken" title="Generate a random token">Generate</button>
+            </div>
+            <span class="note" id="s-token-note"></span>
+          </div>
+          <div class="field wide">
+            <label class="check"><input type="checkbox" id="s-token-clear">
+              Remove the token (only possible when bound to loopback)</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>TLS<span class="hint" id="setTlsState"></span></h2>
+      <div class="body">
+        <p class="note" style="margin:0 0 12px">
+          Without TLS the token and everything this page shows cross the network
+          in clear text. A self-signed certificate does not authenticate the
+          server, but it does stop that.
+        </p>
+        <div class="fields">
+          <div class="field wide">
+            <label class="check"><input type="checkbox" id="s-https-enable">
+              Enable HTTPS</label>
+            <span class="note">Off keeps plain HTTP and clears any certificate
+              below when you save.</span>
+          </div>
+        </div>
+        <div id="s-tls-fields">
+          <div class="fields">
+            <div class="field wide">
+              <label for="s-cert">Certificate (PEM)</label>
+              <input type="text" id="s-cert" spellcheck="false" placeholder="none — plain HTTP">
+              <span class="note" id="s-path-note"></span>
+            </div>
+            <div class="field wide">
+              <label for="s-key">Private key (PEM)</label>
+              <input type="text" id="s-key" spellcheck="false" placeholder="same file as the certificate">
+            </div>
+          </div>
+          <div id="s-cert-info" class="bpf hide" style="margin-top:12px"></div>
+          <div id="s-cert-warnings" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+            <button id="btnSelfSigned">Generate a self-signed certificate</button>
+            <span class="note" id="s-cert-note"></span>
+          </div>
+          <div class="fields" style="margin-top:14px">
+            <div class="field wide">
+              <label for="f-cert">Or upload your own certificate and key</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <input type="file" id="f-cert" accept=".pem,.crt,.cer,.key,text/plain">
+                <input type="file" id="f-key" accept=".pem,.key,text/plain">
+                <button id="btnTlsUpload">Upload</button>
+              </div>
+              <span class="note" id="s-upload-note">Leave the key file empty
+                if the certificate file already contains the key (a combined
+                PEM). Uploaded files replace whatever certificate is
+                currently set — press Save settings, then restart, same as
+                after generating one.</span>
+            </div>
+          </div>
+          <p class="note" style="margin:12px 0 0">
+            Using your own CA another way: put the leaf certificate and, if
+            you have intermediates, the chain in one PEM file — leaf first —
+            and either upload it above or point the Certificate field at a
+            path readable by the user this runs as; in Docker that means a
+            mount such as <code>./tls:/tls:ro</code> and paths like
+            <code>/tls/cert.pem</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="col">
+    <div class="card">
+      <h2>Applying changes</h2>
+      <div class="body">
+        <div class="fields hide" id="setUrlBox" style="margin-bottom:14px">
+          <div class="field wide">
+            <label>Open at, once restarted</label>
+            <div class="cmd">
+              <code id="setUrlCmd"></code>
+              <button id="btnCopyUrl">Copy</button>
+            </div>
+            <span class="note">Shown once, right after this save — a token in
+              here is not kept anywhere in this page after you navigate away,
+              so copy it now if you need it.</span>
+          </div>
+        </div>
+        <div class="banner" id="setRestartBanner" style="margin-bottom:12px">
+          <span class="ic">i</span>
+          <span id="setRestartText">Saved settings match what is running.</span>
+        </div>
+        <p class="note" style="margin:0 0 8px">
+          Saving writes the settings; it does not move the running server. These
+          take effect when the web UI restarts — <strong>one container</strong>:
+        </p>
+        <div class="cmd">
+          <code id="setRestartCmd">docker compose restart gui-lan</code>
+          <button id="btnCopyRestart">Copy</button>
+        </div>
+        <p class="note" style="margin:12px 0 0">
+          Nothing else restarts. The gateway's own settings apply when you press
+          Stop then Start on the Gateway tab, with no container restart at all —
+          unless you run the gateway as its own container, which then needs
+          <code>docker compose restart gateway</code>.
+        </p>
+        <p class="note" style="margin:10px 0 0">
+          That command restarts the <em>existing</em> container, which is what
+          re-reads these settings. It is not enough after rebuilding the image:
+          a restarted container keeps the image it was created from. To pick up
+          new code use
+          <code>docker compose up -d --force-recreate</code> instead, and check
+          the version next to the title to confirm.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Accounts<span class="hint" id="usersHint"></span></h2>
+      <div class="body">
+        <p class="note" style="margin:0 0 12px" id="usersIntro"></p>
+        <table class="grid" id="usersTable"><tbody></tbody></table>
+
+        <div class="fields" style="margin-top:14px">
+          <div class="field">
+            <label for="u-name">New account</label>
+            <input type="text" id="u-name" spellcheck="false" autocapitalize="off"
+                   placeholder="name">
+            <span class="note">a–z, 0–9, dot, dash, underscore</span>
+          </div>
+          <div class="field">
+            <label for="u-pass">Password</label>
+            <input type="password" id="u-pass" autocomplete="new-password"
+                   placeholder="at least 12 characters">
+            <span class="note">length beats punctuation — use a phrase</span>
+          </div>
+          <div class="field" style="align-self:end;flex:0 0 auto">
+            <button id="btnUserAdd" style="min-width:90px">Add</button>
+          </div>
+        </div>
+
+        <p class="note" style="margin:12px 0 0">
+          Everyone who can sign in can already start and stop traffic on this
+          host, so there is no separate admin role: any account may manage
+          accounts. The last one that can still sign in cannot be removed or
+          disabled, so the token is never left as the only way back in.
+          Changing or disabling an account signs that person out immediately.
+        </p>
+        <p class="note" style="margin:8px 0 0">
+          You can also do all of this on the host with
+          <code>spantap-sim users add|passwd|remove|list</code>, which is how you
+          create the first account.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>If a setting locks you out</h2>
+      <div class="body">
+        <p class="note" style="margin:0 0 10px">
+          A command-line flag always beats the saved settings, so there is always
+          a way back in:
+        </p>
+        <div class="cmd">
+          <code>docker compose run --rm --service-ports gui gui --no-open --bind 127.0.0.1</code>
+          <button id="btnCopyRescue">Copy</button>
+        </div>
+        <p class="note" style="margin:10px 0 0">
+          The server also refuses to save an address it cannot bind or a
+          certificate it cannot load, and if a stored value stops working later
+          it comes back on loopback rather than not at all.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>PCAP-over-IP listener</h2>
+      <div class="body">
+        <p class="note" style="margin:0 0 10px">
+          Where Wireshark connects is a separate setting, on the Gateway tab —
+          it is the gateway's listener, not this page's. Currently:
+        </p>
+        <div class="bpf" id="setGwListener">—</div>
+        <p class="note" style="margin:10px 0 0">
+          Bound to 127.0.0.1 it is reachable only on the gateway host, so remote
+          Wireshark needs a tunnel. Set it to an address of this host to let
+          Wireshark connect directly — same trade as this page, without even a
+          token in front of it.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Where this is stored</h2>
+      <div class="body">
+        <div class="bpf" id="setPaths">—</div>
+        <p class="note" style="margin:10px 0 0">
+          In Docker this lives in the <code>erspan-config</code> volume, so it
+          survives rebuilds and upgrades. The file holds the token and is written
+          mode 0600.
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+</div><!-- /leftpane -->
+
+<!-- ================= right pane: always-on activity, both stacked ================= -->
+<div class="rightpane">
+
+  <div id="rpEmpty">Nothing running yet — start the Simulator or
+    the Gateway to see its activity here.</div>
+
+  <div id="rpSimGroup" class="hide">
+  <div class="rightpane-heading"><span class="tabdot" id="simRpDot" data-state="idle"></span>Simulator</div>
+  <section class="col">
+    <div class="card">
+      <h2>Monitor<span class="hint" id="runHint"></span></h2>
+      <div class="tiles">
+        <div class="tile">
+          <div class="k">Packets sent</div>
+          <div class="v" id="m-packets">0</div>
+          <div class="s" id="m-packets-sub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="k">On the wire</div>
+          <div class="v" id="m-bytes">0 <span class="u">B</span></div>
+          <div class="s" id="m-bytes-sub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="k">Rate</div>
+          <div class="v" id="m-pps">0 <span class="u">pkt/s</span></div>
+          <div class="s" id="m-pps-sub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="k">Throughput</div>
+          <div class="v" id="m-bps">0 <span class="u">Mbit/s</span></div>
+          <div class="s" id="m-bps-sub">&nbsp;</div>
+        </div>
+      </div>
+      <div class="chart">
+        <h3>Packets per second<span class="now" id="c1now"></span></h3>
+        <canvas id="c1" aria-label="packets per second over time"></canvas>
+      </div>
+      <div class="chart">
+        <h3>Megabits per second on the wire<span class="now" id="c2now"></span></h3>
+        <canvas id="c2" aria-label="megabits per second over time"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>What is being mirrored<span class="hint" id="protoHint"></span></h2>
+      <div class="body" id="protocols">
+        <div class="empty">Nothing yet — start a run to see the protocol mix.</div>
+      </div>
+    </div>
+  </section>
+  </div><!-- /rpSimGroup -->
+
+  <div id="rpGwGroup" class="hide">
+  <div class="rightpane-heading"><span class="tabdot" id="gwRpDot" data-state="idle"></span>Gateway</div>
+  <section class="col">
+    <div class="card">
+      <h2>Monitor<span class="hint" id="gwRunHint"></span></h2>
+      <div class="tiles">
+        <div class="tile">
+          <div class="k">Frames received</div>
+          <div class="v" id="g-received">0</div>
+          <div class="s" id="g-received-sub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="k">Lost in transit</div>
+          <div class="v" id="g-lost">0</div>
+          <div class="s" id="g-lost-sub">by GRE sequence</div>
+        </div>
+        <div class="tile">
+          <div class="k">Dropped here</div>
+          <div class="v" id="g-dropped">0</div>
+          <div class="s" id="g-dropped-sub">ring buffer</div>
+        </div>
+        <div class="tile">
+          <div class="k">Wireshark</div>
+          <div class="v" id="g-client" style="font-size:18px">—</div>
+          <div class="s" id="g-client-sub">&nbsp;</div>
+        </div>
+      </div>
+      <div class="body" style="padding-top:12px;padding-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-2)">
+          <span>Ring buffer</span><span id="g-ringlabel">empty</span>
+        </div>
+        <div class="meter" id="g-ringmeter"><span style="width:0%"></span></div>
+      </div>
+      <div class="chart">
+        <h3>Frames received per second<span class="now" id="c3now"></span></h3>
+        <canvas id="c3" aria-label="frames received per second"></canvas>
+      </div>
+      <div class="chart">
+        <h3>Megabits per second arriving<span class="now" id="c4now"></span></h3>
+        <canvas id="c4" aria-label="megabits per second arriving"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>What is arriving<span class="hint" id="gwProtoHint"></span></h2>
+      <div class="body" id="gwProtocols">
+        <div class="empty">Nothing yet — start the gateway to see what the mirror carries.</div>
+      </div>
+    </div>
+
+    <div id="outBanners" class="banners"></div>
+
+    <div class="card">
+      <h2>Delivered to Wireshark<span class="hint" id="outHint"></span></h2>
+      <div class="tiles">
+        <div class="tile">
+          <div class="k">Frames delivered</div>
+          <div class="v" id="o-frames">0</div>
+          <div class="s" id="o-frames-sub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="k">Bytes delivered</div>
+          <div class="v" id="o-bytes">0 <span class="u">B</span></div>
+          <div class="s" id="o-bytes-sub">&nbsp;</div>
+        </div>
+        <div class="tile">
+          <div class="k">Rate</div>
+          <div class="v" id="o-rate">0</div>
+          <div class="s" id="o-rate-sub">frames/s</div>
+        </div>
+        <div class="tile">
+          <div class="k">Client</div>
+          <div class="v" id="o-client" style="font-size:18px">—</div>
+          <div class="s" id="o-client-sub">&nbsp;</div>
+        </div>
+      </div>
+      <div class="chart">
+        <h3>Frames delivered per second<span class="now" id="c5now"></span></h3>
+        <canvas id="c5" aria-label="frames delivered per second"></canvas>
+      </div>
+      <div class="chart">
+        <h3>Megabits per second delivered<span class="now" id="c6now"></span></h3>
+        <canvas id="c6" aria-label="megabits per second delivered"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Where the frames went<span class="hint" id="outAcctHint"></span></h2>
+      <div class="body">
+        <p class="note" style="margin:0 0 12px">
+          Every frame that arrived ends up in exactly one of these. If they do
+          not add up, something is losing frames that nothing is counting —
+          which is the one thing a tap must never do quietly.
+        </p>
+        <table class="grid" id="outAccounting"><tbody></tbody></table>
+        <div id="outBalance" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Connect Wireshark</h2>
+      <div class="body">
+        <div class="cmd">
+          <code id="outCmd">wireshark -k -i TCP@127.0.0.1:57012</code>
+          <button id="btnCopyOutCmd" title="Copy to clipboard">Copy</button>
+        </div>
+        <p class="note" style="margin:10px 0 0">
+          One client at a time. While nobody is attached, arriving frames are
+          discarded rather than queued, so whoever connects sees live traffic
+          instead of a stale backlog — those show as <em>no client attached</em>
+          on the left.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Readers<span class="hint" id="outClientsHint"></span></h2>
+      <div class="body">
+        <table class="grid" id="outClients"><tbody></tbody></table>
+        <div class="empty" id="outClientsEmpty">Nobody has connected yet.</div>
+      </div>
+    </div>
+  </section>
+  </div><!-- /rpGwGroup -->
+
+</div><!-- /rightpane -->
+</div><!-- /appgrid -->
+
+<div id="toast"></div>
+<div id="tip"></div>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------------ utils */
+const $ = (id) => document.getElementById(id);
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+
+//: set once a 401 has sent us to the sign-in page, so the polling loop does
+//: not queue up a second navigation behind the first.
+let reloading = false;
+
+async function api(path, body) {
+  const opts = { method: body === undefined ? "GET" : "POST", headers: {} };
+  if (TOKEN) opts.headers["X-Spantap-Token"] = TOKEN;
+  if (body !== undefined) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, opts);
+  let data = {};
+  try { data = await res.json(); } catch (e) { /* empty body */ }
+  if (res.status === 401 && !reloading) {
+    // A session that timed out would otherwise show up as a stream of
+    // identical toasts from the polling loop. Go to the sign-in page once.
+    reloading = true;
+    location.href = "/login";
+    throw new Error("your session has ended — signing in again");
+  }
+  if (!res.ok) throw new Error(data.error || (res.status + " " + res.statusText));
+  return data;
+}
+
+function toast(message, ok) {
+  const el = document.createElement("div");
+  el.className = "toast" + (ok ? " ok" : "");
+  el.textContent = message;
+  $("toast").appendChild(el);
+  setTimeout(() => el.remove(), ok ? 3000 : 7000);
+}
+
+const fmt = {
+  int: (n) => Math.round(n).toLocaleString("en-US"),
+  bytes(n) {
+    const u = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return [i === 0 ? Math.round(n).toString() : n.toFixed(n < 10 ? 2 : 1), u[i]];
+  },
+  // bytes() splits value from unit for the big stat tiles; size() is the same
+  // number as one piece of prose.
+  size(n) { const [v, u] = this.bytes(n); return v + " " + u; },
+  rate(n) {
+    if (!n) return "0";
+    if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+    return n.toFixed(n < 10 ? 1 : 0);
+  },
+  // Bits per second as prose. rate() above is a bare number with a k suffix
+  // and says nothing about units, which is wrong for a throughput figure.
+  bits(n) {
+    const u = ["bit/s", "kbit/s", "Mbit/s", "Gbit/s"];
+    let i = 0; while (n >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+    return (i === 0 ? Math.round(n) : n.toFixed(n < 10 ? 2 : 1)) + " " + u[i];
+  },
+  // An axis label needs enough precision to distinguish the gridlines from
+  // each other. rate() rounds to one decimal, which turns a whole Mbit/s axis
+  // into "0.0, 0.0, 0" the moment the traffic is light — three labels that
+  // say nothing and look like a bug.
+  axis(v, top) {
+    if (v === 0) return "0";
+    if (top >= 1000) return this.rate(v);
+    if (top >= 10) return v.toFixed(0);
+    if (top >= 1) return v.toFixed(1);
+    if (top >= 0.1) return v.toFixed(2);
+    return v.toPrecision(2);
+  },
+  dur(s) {
+    s = Math.max(0, Math.floor(s));
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return (h ? h + "h " : "") + (h || m ? m + "m " : "") + (s % 60) + "s";
+  },
+};
+
+/* ------------------------------------------------------- profile <-> form */
+let profile = null;
+let bootstrapped = false;
+
+const get = (obj, path) => path.split(".").reduce((o, k) => (o || {})[k], obj);
+function set(obj, path, value) {
+  const keys = path.split("."), last = keys.pop();
+  keys.reduce((o, k) => (o[k] = o[k] || {}), obj)[last] = value;
+}
+
+function boundInputs() { return document.querySelectorAll("[data-path]"); }
+
+function applyProfile(p) {
+  profile = JSON.parse(JSON.stringify(p));
+  boundInputs().forEach((el) => {
+    const v = get(profile, el.dataset.path);
+    if (el.type === "checkbox") el.checked = !!v;
+    else el.value = v === null || v === undefined ? "" : v;
+  });
+  // "endless loop" is loop === 0; the passes box only matters when it is off.
+  const endless = Number(profile.replay.loop) === 0;
+  $("f-endless").checked = endless;
+  $("f-passes").value = endless ? 1 : profile.replay.loop;
+  $("f-passes").disabled = endless;
+  selectSource(profile.source, false);
+  selectOutput(profile.output.mode, false);
+}
+
+function collect() {
+  const p = JSON.parse(JSON.stringify(profile));
+  boundInputs().forEach((el) => {
+    const path = el.dataset.path;
+    if (el.type === "checkbox") set(p, path, el.checked);
+    else if (el.type === "number") set(p, path, el.value === "" ? 0 : Number(el.value));
+    else set(p, path, el.value);
+  });
+  p.replay.loop = $("f-endless").checked ? 0 : Math.max(1, Number($("f-passes").value) || 1);
+  p.source = document.querySelector("#sourceSeg button[aria-pressed=true]").dataset.source;
+  p.output.mode = document.querySelector("#outputSeg button[aria-pressed=true]").dataset.mode;
+  return p;
+}
+
+function selectSource(source, touch) {
+  document.querySelectorAll("#sourceSeg button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.source === source)));
+  ["synth", "replay", "live"].forEach((s) =>
+    $("pane-" + s).classList.toggle("hide", s !== source));
+  $("card-exclusions").classList.toggle("hide", source !== "live");
+  $("sourceHint").textContent = source === "live"
+    ? "its own traffic is filtered out automatically"
+    : (source === "replay" ? "read from disk" : "generated in memory");
+  if (touch) onChange();
+}
+
+function selectOutput(mode, touch) {
+  document.querySelectorAll("#outputSeg button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+  $("pcapPathField").classList.toggle("hide", mode !== "pcap");
+  if (touch) onChange();
+}
+
+/* --------------------------------------------------------- filter preview */
+let previewTimer = null;
+function onChange() {
+  $("mtuHint").textContent = "max mirrored frame "
+    + (Math.max(576, Number($("f-mtu").value) || 1500) - 36) + " B";
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(refreshPreview, 200);
+}
+
+async function refreshPreview() {
+  if (!bootstrapped) return;
+  try {
+    const r = await api("/api/preview", { profile: collect() });
+    $("bpfText").textContent = r.expression;
+    $("bpfClauses").innerHTML = "";
+    r.clauses.forEach((c) => {
+      const li = document.createElement("li");
+      const mark = document.createElement("span");
+      mark.className = c.mandatory ? "lock" : "opt";
+      mark.textContent = c.mandatory ? "\u{1F512}" : "•";
+      mark.title = c.mandatory ? "always applied" : "optional";
+      const text = document.createElement("div");
+      const code = document.createElement("code");
+      code.textContent = c.expr;
+      const why = document.createElement("div");
+      why.className = "why";
+      why.textContent = c.reason;
+      text.appendChild(code); text.appendChild(why);
+      li.appendChild(mark); li.appendChild(text);
+      $("bpfClauses").appendChild(li);
+    });
+  } catch (e) { $("bpfText").textContent = e.message; $("bpfClauses").innerHTML = ""; }
+}
+
+/* ----------------------------------------------------------------- charts */
+const CHARTS = {};
+function chart(id, color, unit) {
+  const canvas = $(id);
+  const state = { canvas, color, unit, points: [], hover: null };
+  CHARTS[id] = state;
+  canvas.addEventListener("mousemove", (ev) => {
+    const r = canvas.getBoundingClientRect();
+    state.hover = { x: ev.clientX - r.left, cx: ev.clientX, cy: r.top };
+    draw(state);
+  });
+  canvas.addEventListener("mouseleave", () => {
+    state.hover = null; $("tip").style.opacity = 0; draw(state);
+  });
+  return state;
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function draw(s) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = s.canvas.clientWidth, h = s.canvas.clientHeight;
+  if (!w || !h) return;
+  s.canvas.width = Math.round(w * dpr); s.canvas.height = Math.round(h * dpr);
+  const ctx = s.canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const padL = 44, padR = 8, padT = 8, padB = 18;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const grid = cssVar("--grid"), muted = cssVar("--muted"), axis = cssVar("--axis");
+  const color = cssVar(s.color);
+
+  const vals = s.points.map((p) => p[1]);
+  // A real peak of, say, 0.3 pkt/s is worth an axis; no points yet, or points
+  // that are all genuinely zero, are not — either way the peak rounds to 0
+  // for a human. hasSignal separates those from an actual small-but-nonzero
+  // rate, so the label loop below can print a plain "0, 0, 0" instead of
+  // computing an axis around the 1e-9 floor and printing it verbatim
+  // ("1.0e-9", ".0e-10" clipped by the label gutter — the actual bug this
+  // guards against, not just an appearance preference).
+  const rawPeak = vals.length ? Math.max(...vals) : 0;
+  const hasSignal = rawPeak > 1e-9;
+  const peak = Math.max(1e-9, rawPeak);
+  // Round the top up to something a human reads off an axis.
+  const mag = Math.pow(10, Math.floor(Math.log10(peak)));
+  const top = hasSignal ? Math.ceil(peak / mag * 2) / 2 * mag : 0;
+
+  ctx.font = "11px system-ui, -apple-system, sans-serif";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 2; i++) {
+    const y = padT + plotH * (i / 2);
+    ctx.strokeStyle = grid; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, y + 0.5); ctx.lineTo(w - padR, y + 0.5); ctx.stroke();
+    ctx.fillStyle = muted; ctx.textAlign = "right";
+    ctx.fillText(hasSignal ? fmt.axis(top * (1 - i / 2), top) : "0", padL - 7, y);
+  }
+  ctx.strokeStyle = axis;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.stroke();
+
+  if (s.points.length < 2) {
+    ctx.fillStyle = muted; ctx.textAlign = "center";
+    ctx.fillText("waiting for data…", padL + plotW / 2, padT + plotH / 2);
+    return;
+  }
+
+  const t0 = s.points[0][0], t1 = s.points[s.points.length - 1][0];
+  const span = Math.max(1e-6, t1 - t0);
+  const X = (t) => padL + ((t - t0) / span) * plotW;
+  const Y = (v) => padT + plotH * (1 - v / (top || 1e-9));
+
+  ctx.beginPath();
+  ctx.moveTo(X(t0), padT + plotH);
+  s.points.forEach((p) => ctx.lineTo(X(p[0]), Y(p[1])));
+  ctx.lineTo(X(t1), padT + plotH);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+  grad.addColorStop(0, color + "3d"); grad.addColorStop(1, color + "05");
+  ctx.fillStyle = grad; ctx.fill();
+
+  ctx.beginPath();
+  s.points.forEach((p, i) => (i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))));
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round";
+  ctx.stroke();
+
+  ctx.fillStyle = muted; ctx.textAlign = "left";
+  ctx.fillText("−" + fmt.dur(span), padL + 2, padT + plotH + 9);
+  ctx.textAlign = "right";
+  ctx.fillText("now", w - padR, padT + plotH + 9);
+
+  if (s.hover && s.hover.x >= padL && s.hover.x <= w - padR) {
+    const t = t0 + ((s.hover.x - padL) / plotW) * span;
+    let best = s.points[0];
+    for (const p of s.points) if (Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
+    const bx = X(best[0]), by = Y(best[1]);
+    ctx.strokeStyle = axis; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(bx + 0.5, padT); ctx.lineTo(bx + 0.5, padT + plotH); ctx.stroke();
+    ctx.beginPath(); ctx.arc(bx, by, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.strokeStyle = cssVar("--surface"); ctx.lineWidth = 2; ctx.stroke();
+    const tip = $("tip");
+    tip.textContent = fmt.rate(best[1]) + " " + s.unit + " · " + fmt.dur(t1 - best[0]) + " ago";
+    tip.style.opacity = 1;
+    const r = s.canvas.getBoundingClientRect();
+    tip.style.left = Math.min(window.innerWidth - 190, r.left + bx + 12) + "px";
+    tip.style.top = (r.top + by - 34) + "px";
+  }
+}
+
+/* -------------------------------------------------------------- protocols */
+const GROUPS = [
+  ["network", "Network layer", "g1"],
+  ["transport", "Transport", "g2"],
+  ["application", "Application (by well-known port)", "g3"],
+  ["link", "Link layer", "g4"],
+];
+
+function renderProtocols(rootId, hintId, protocols, total, emptyText) {
+  const root = $(rootId);
+  if (!protocols || !total) {
+    root.innerHTML = '<div class="empty">' + emptyText + "</div>";
+    $(hintId).textContent = "";
+    return;
+  }
+  $(hintId).textContent = fmt.int(total) + " frames classified";
+  const frag = document.createDocumentFragment();
+  GROUPS.forEach(([key, title, cls]) => {
+    const data = protocols[key] || {};
+    const rows = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    if (!rows.length) return;
+    const max = rows[0][1];
+    const group = document.createElement("div");
+    group.className = "protogroup " + cls;
+    const h = document.createElement("h3"); h.textContent = title;
+    const bars = document.createElement("div"); bars.className = "bars";
+    rows.forEach(([name, count]) => {
+      const row = document.createElement("div"); row.className = "bar";
+      const n = document.createElement("div"); n.className = "n";
+      n.textContent = name; n.title = name;
+      const track = document.createElement("div"); track.className = "track";
+      const fill = document.createElement("div"); fill.className = "fill";
+      fill.style.width = Math.max(1, (count / max) * 100) + "%";
+      track.appendChild(fill);
+      const v = document.createElement("div"); v.className = "v";
+      const pct = (100 * count / total);
+      v.textContent = fmt.int(count) + "  " + (pct < 1 ? "<1" : pct.toFixed(0)) + "%";
+      row.appendChild(n); row.appendChild(track); row.appendChild(v);
+      row.addEventListener("mousemove", (ev) => {
+        const tip = $("tip");
+        tip.textContent = name + " · " + fmt.int(count) + " frames · " + pct.toFixed(1) + "%";
+        tip.style.opacity = 1;
+        tip.style.left = Math.min(window.innerWidth - 240, ev.clientX + 14) + "px";
+        tip.style.top = (ev.clientY - 34) + "px";
+      });
+      row.addEventListener("mouseleave", () => ($("tip").style.opacity = 0));
+      bars.appendChild(row);
+    });
+    group.appendChild(h); group.appendChild(bars);
+    frag.appendChild(group);
+  });
+  root.innerHTML = "";
+  if (frag.childNodes.length) root.appendChild(frag);
+  else root.innerHTML = '<div class="empty">No frames classified yet.</div>';
+}
+
+/* ------------------------------------------------------------- monitoring */
+let pollTimer = null;
+let lastState = "idle";
+
+function renderState(snap) {
+  const st = snap.state;
+  lastState = st;
+  updateRpVisibility();
+  $("statePill").dataset.state = st;
+  $("stateText").textContent = st;
+  const running = st === "running" || st === "stopping";
+  $("btnStart").classList.toggle("hide", running);
+  $("btnStop").classList.toggle("hide", !running);
+  $("btnStop").disabled = st === "stopping";
+  // The tab LED, the right pane's heading LED, and the prominent switch
+  // inside the panel all mirror the same state as the header pill above —
+  // four views of one value, so a person can tell the simulator is running
+  // no matter which tab or pane they're looking at.
+  ["simTabDot", "simRpDot", "simSwitchDot"].forEach((id) => ($(id).dataset.state = st));
+  $("simSwitchText").textContent = st;
+  $("simSwitch").checked = running;
+  $("simSwitch").disabled = st === "stopping";
+  boundInputs().forEach((el) => (el.disabled = running));
+  $("f-passes").disabled = running || $("f-endless").checked;
+  $("f-endless").disabled = running;
+  // Scoped to the Simulator's own segmented controls (packet source, output
+  // mode) — NOT ".seg button" generally, which also matches #viewTabs (the
+  // Simulator/Gateway/Settings nav bar) and #gwSourceTabs (the Gateway's own
+  // source picker), both of which share the "seg" class. A broad ".seg
+  // button" selector here disabled the nav bar itself the instant the
+  // simulator started, trapping the page on the Simulator tab.
+  document.querySelectorAll("#sourceSeg button, #outputSeg button").forEach(
+    (b) => (b.disabled = running));
+
+  const s = snap.stats;
+  const info = snap.info || {};
+  $("runHint").textContent = info.source_description
+    ? info.source_description + " → " + (info.output_description || "")
+    : "";
+
+  if (snap.error) showBanner("err", snap.error);
+
+  const SIM_EMPTY = "Nothing yet — start a run to see the protocol mix.";
+  if (!s) { renderProtocols("protocols", "protoHint", null, 0, SIM_EMPTY); return; }
+
+  const hist = s.history || [];
+  const now = hist.length ? hist[hist.length - 1] : [0, 0, 0];
+  const [bv, bu] = fmt.bytes(s.bytes_out);
+  const [iv, iu] = fmt.bytes(s.bytes_in);
+
+  $("m-packets").textContent = fmt.int(s.packets);
+  $("m-packets-sub").textContent = s.truncated
+    ? fmt.int(s.truncated) + " truncated to fit the MTU" : "none truncated";
+  $("m-bytes").innerHTML = bv + ' <span class="u">' + bu + "</span>";
+  $("m-bytes-sub").textContent = iv + " " + iu + " mirrored + 36 B/packet overhead";
+  $("m-pps").innerHTML = fmt.rate(running ? now[1] : s.avg_pps) + ' <span class="u">pkt/s</span>';
+  $("m-pps-sub").textContent = "avg " + fmt.rate(s.avg_pps) + " over " + fmt.dur(s.elapsed);
+  $("m-bps").innerHTML = ((running ? now[2] : s.avg_bps) / 1e6).toFixed(2)
+    + ' <span class="u">Mbit/s</span>';
+  $("m-bps-sub").textContent = s.errors ? fmt.int(s.errors) + " send errors" : "no errors";
+
+  CHARTS.c1.points = hist.map((p) => [p[0], p[1]]);
+  CHARTS.c2.points = hist.map((p) => [p[0], p[2] / 1e6]);
+  $("c1now").textContent = hist.length ? fmt.rate(now[1]) + " pkt/s" : "";
+  $("c2now").textContent = hist.length ? (now[2] / 1e6).toFixed(2) + " Mbit/s" : "";
+  draw(CHARTS.c1); draw(CHARTS.c2);
+
+  renderProtocols("protocols", "protoHint", s.protocols, s.packets, SIM_EMPTY);
+}
+
+async function poll() {
+  try { renderState(await api("/api/state")); }
+  catch (e) { /* the server may be restarting; the next tick retries */ }
+  clearTimeout(pollTimer);
+  // Once a 401 has sent us to the sign-in page, stop: another tick would only
+  // add a failed request to the console while the navigation is in flight.
+  if (reloading) return;
+  pollTimer = setTimeout(poll, lastState === "running" ? 1000 : 2500);
+}
+
+/* ---------------------------------------------------------------- banners */
+function showBanner(kind, text, rootId) {
+  const root = $(rootId || "banners");
+  const key = kind + ":" + text;
+  if ([...root.children].some((c) => c.dataset.key === key)) return;
+  const el = document.createElement("div");
+  el.className = "banner " + kind;
+  el.dataset.key = key;
+  el.innerHTML = '<span class="ic">!</span>';
+  const span = document.createElement("span");
+  span.textContent = text;
+  el.appendChild(span);
+  root.appendChild(el);
+}
+
+/* ---------------------------------------------------------------- gateway */
+let gwConfig = null;
+let gwPollTimer = null;
+let gwLastState = "idle";
+
+// The Simulator and Gateway each get their own always-on card in the right
+// pane, but an idle process has nothing worth showing — so its card is
+// hidden rather than displayed empty next to the other one's real data.
+// Anything past "idle" (running, stopping, finished, stopped, error) is
+// left visible: a finished/stopped run's last numbers, or an error, are
+// still worth seeing until the person starts something else.
+function updateRpVisibility() {
+  const simIdle = lastState === "idle";
+  const gwIdle = gwLastState === "idle";
+  $("rpSimGroup").classList.toggle("hide", simIdle);
+  $("rpGwGroup").classList.toggle("hide", gwIdle);
+  $("rpEmpty").classList.toggle("hide", !(simIdle && gwIdle));
+}
+
+function gwInputs() { return document.querySelectorAll("[data-gw]"); }
+
+function applyGw(cfg) {
+  gwConfig = JSON.parse(JSON.stringify(cfg));
+  gwInputs().forEach((el) => {
+    const v = get(gwConfig, el.dataset.gw);
+    if (el.type === "checkbox") el.checked = !!v;
+    else el.value = v === null || v === undefined ? "" : v;
+  });
+  selectGwSource(gwConfig.source || "erspan", false);
+  updateGwCmd();
+}
+
+function collectGw() {
+  const c = JSON.parse(JSON.stringify(gwConfig));
+  c.source = gwSource;
+  gwInputs().forEach((el) => {
+    const path = el.dataset.gw;
+    if (el.type === "checkbox") set(c, path, el.checked);
+    else if (el.type === "number") set(c, path, el.value === "" ? 0 : Number(el.value));
+    else set(c, path, el.value.trim());
+  });
+  // Blank means "every session", which the API spells as null.
+  if (!String(c.receive.session_id === null ? "" : c.receive.session_id).trim()) {
+    c.receive.session_id = null;
+  }
+  return c;
+}
+
+let gwSource = "erspan";
+
+function selectGwSource(which, touch) {
+  gwSource = which === "live" ? "live" : which === "replay" ? "replay" : "erspan";
+  document.querySelectorAll("#gwSourceTabs button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.gwsource === gwSource)));
+  $("gwErspanCard").classList.toggle("hide", gwSource !== "erspan");
+  $("gwLiveCard").classList.toggle("hide", gwSource !== "live");
+  $("gwReplayCard").classList.toggle("hide", gwSource !== "replay");
+  $("gwSourceHint").textContent = {
+    live: "capturing locally", replay: "from a stored file",
+  }[gwSource] || "raw GRE, protocol 47";
+  $("gwSourceNote").textContent = {
+    live: "Frames are captured from an interface on this host and served over "
+      + "PCAP-over-IP exactly as ERSPAN frames are — the Wireshark end cannot "
+      + "tell the difference. There is no GRE sequence number on a local "
+      + "capture, so loss before this host is not something the gateway can "
+      + "claim to know; it reports what the capture tool says the kernel dropped "
+      + "instead.",
+    replay: "A stored capture is played back and served over PCAP-over-IP "
+      + "exactly as the other two sources would deliver it — useful for a "
+      + "demo, or for troubleshooting delivery without a switch mirror or a "
+      + "NIC worth capturing from at hand. No GRE sequence number here "
+      + "either, so loss is reported the same way a local capture reports "
+      + "it: unknown, not zero. There is also no feedback-loop risk to "
+      + "guard against, unlike the other two sources — a file cannot see "
+      + "the gateway's own output.",
+  }[gwSource] || "A switch mirrors to this host and the gateway decapsulates "
+    + "ERSPAN Type II off a raw GRE socket. Loss in transit is counted from "
+    + "the GRE sequence number.";
+  renderExclusions();
+  // Nothing to mark dirty: the gateway config is only read on Start or Save.
+}
+
+document.querySelectorAll("#gwSourceTabs button").forEach((b) =>
+  b.addEventListener("click", () => selectGwSource(b.dataset.gwsource, true)));
+
+/* The capture filter the gateway will actually use, explained clause by
+   clause, with the un-removable ones marked. Same treatment as the
+   simulator's, because it is the same class of trap. */
+function renderExclusions() {
+  const host = $("gwExclusions");
+  if (!host) return;
+  if (gwSource !== "live") { host.innerHTML = ""; return; }
+  // serve.port 0 means "let the kernel pick", and the real port is only known
+  // once the server binds. Showing "not (tcp port 0)" would be a filter that
+  // protects nothing, which is exactly the misunderstanding this panel exists
+  // to prevent.
+  const raw = $("g-port").value.trim();
+  const auto = raw === "" || raw === "0";
+  const port = auto ? "\u2039assigned at start\u203a" : raw;
+  const clauses = [{
+    expr: "not (tcp port " + port + ")",
+    locked: true,
+    reason: "this gateway's own PCAP-over-IP session. The frames it writes to "
+          + "Wireshark leave by the interface it is capturing, so without this "
+          + "it captures its own output, sends that, captures it again — and "
+          + "the link saturates in seconds."
+          + (auto ? " The port is chosen by the kernel when the gateway starts, "
+                  + "and the filter is built around whichever one it gets." : ""),
+  }];
+  if ($("g-exgre").checked) clauses.push({
+    expr: "not (ip proto 47)", locked: false,
+    reason: "GRE on the wire, so an ERSPAN frame is not seen both wrapped and "
+          + "unwrapped when this host is also a mirror destination.",
+  });
+  if ($("g-exssh").checked) clauses.push({
+    expr: "not (tcp port 22)", locked: false,
+    reason: "your own SSH session to this host.",
+  });
+  const user = $("g-filter").value.trim();
+  if (user) clauses.push({
+    expr: "(" + user + ")", locked: false, reason: "your own capture filter.",
+  });
+
+  host.innerHTML = "";
+  const h = document.createElement("div");
+  h.className = "note";
+  h.style.marginBottom = "8px";
+  h.textContent = "Capture filter in full:";
+  host.appendChild(h);
+  const code = document.createElement("div");
+  code.className = "cmd";
+  const c = document.createElement("code");
+  c.textContent = clauses.map((x) => x.expr).join(" and ");
+  code.appendChild(c);
+  host.appendChild(code);
+  clauses.forEach((x) => {
+    const row = document.createElement("div");
+    row.className = "note";
+    row.style.margin = "8px 0 0";
+    row.textContent = (x.locked ? "\u{1F512} " : "") + x.expr + " — " + x.reason;
+    host.appendChild(row);
+  });
+}
+
+document.addEventListener("input", (ev) => {
+  if (ev.target.matches("#g-filter, #g-port")) renderExclusions();
+});
+document.addEventListener("change", (ev) => {
+  if (ev.target.matches("#g-exgre, #g-exssh")) renderExclusions();
+});
+
+function updateGwCmd() {
+  const bind = ($("g-sbind").value || "127.0.0.1").trim();
+  const port = $("g-port").value || "57012";
+  const loopbackBind = bind === "127.0.0.1" || bind === "localhost" || bind === "::1";
+  const host = (bind === "0.0.0.0" || bind === "") ? location.hostname : bind;
+  $("gwCmd").textContent = "wireshark -k -i TCP@" + host + ":" + port;
+
+  // Viewing this page from another machine does not move the packet stream:
+  // the gateway still serves PCAP-over-IP on whatever it is bound to. Say so
+  // here rather than letting someone copy a command that cannot work for them.
+  const viewingRemotely = !["127.0.0.1", "localhost", "::1", ""].includes(location.hostname);
+  const note = $("gwCmdNote");
+  if (viewingRemotely && loopbackBind) {
+    note.textContent =
+      "You are viewing this page from another host, but the gateway serves "
+      + "PCAP-over-IP on " + bind + " — reachable only on the gateway machine "
+      + "itself. Tunnel it:  ssh -L " + port + ":127.0.0.1:" + port + " "
+      + location.hostname + "   then use TCP@127.0.0.1:" + port + " locally.";
+    note.classList.remove("hide");
+  } else {
+    note.classList.add("hide");
+  }
+}
+
+const GW_EMPTY = "Nothing yet — start the gateway to see what the mirror carries.";
+
+function renderGw(snap) {
+  const st = snap.state;
+  gwLastState = st;
+  updateRpVisibility();
+  const dotState = st === "stopped" ? "idle" : st;
+  $("gwPill").dataset.state = dotState;
+  $("gwStateText").textContent = st;
+  const running = st === "running" || st === "stopping";
+  $("btnGwStart").classList.toggle("hide", running);
+  $("btnGwStop").classList.toggle("hide", !running);
+  $("btnGwStop").disabled = st === "stopping";
+  // Same four-views-of-one-value mirroring as the simulator's own state,
+  // above — tab LED, right pane heading LED, and the panel's own switch.
+  ["gwTabDot", "gwRpDot", "gwSwitchDot"].forEach((id) => ($(id).dataset.state = dotState));
+  $("gwSwitchText").textContent = st;
+  $("gwSwitch").checked = running;
+  $("gwSwitch").disabled = st === "stopping";
+  gwInputs().forEach((el) => (el.disabled = running));
+  $("btnGwSave").disabled = running;
+
+  if (snap.error) showBanner("err", snap.error, "gwBanners");
+
+  const r = snap.receiver, ring = snap.ring, srv = snap.server, s = snap.stats;
+  $("gwRunHint").textContent = srv
+    ? (srv.connected ? "streaming to " + srv.peer : "listening on tcp/" + srv.port)
+    : "";
+
+  if (!r) {
+    renderProtocols("gwProtocols", "gwProtoHint", null, 0, GW_EMPTY);
+    return;
+  }
+
+  const [bv, bu] = fmt.bytes(r.bytes);
+  $("g-received").textContent = fmt.int(r.received);
+  $("g-received-sub").textContent = bv + " " + bu
+    + (r.ignored ? " · " + fmt.int(r.ignored) + " non-ERSPAN ignored" : "");
+  $("g-lost").textContent = fmt.int(r.lost);
+  $("g-lost-sub").textContent = r.reordered
+    ? fmt.int(r.reordered) + " reordered" : "by GRE sequence";
+  $("g-dropped").textContent = fmt.int(ring ? ring.dropped : 0);
+  $("g-dropped-sub").textContent = ring && ring.skipped_idle
+    ? fmt.int(ring.skipped_idle) + " arrived with no client" : "ring buffer";
+
+  if (srv && srv.connected) {
+    $("g-client").textContent = "connected";
+    $("g-client-sub").textContent = srv.peer + " · " + fmt.int(srv.frames_sent) + " frames sent";
+  } else if (srv && srv.listening) {
+    $("g-client").textContent = "waiting";
+    $("g-client-sub").textContent = "tcp/" + srv.port
+      + (srv.refused ? " · " + fmt.int(srv.refused) + " refused" : "");
+  } else {
+    $("g-client").textContent = "—";
+    $("g-client-sub").textContent = "not listening";
+  }
+
+  if (ring) {
+    const pct = Math.min(100, ring.fill * 100);
+    $("g-ringmeter").firstElementChild.style.width = pct + "%";
+    $("g-ringmeter").classList.toggle("hot", pct > 80);
+    $("g-ringlabel").textContent = ring.depth
+      ? fmt.int(ring.depth) + " / " + fmt.int(ring.max_frames) + " frames"
+        + (ring.high_water ? " · peak " + fmt.int(ring.high_water) : "")
+      : (ring.accepting ? "empty — keeping up" : "idle — no client connected");
+  }
+
+  if (s) {
+    const hist = s.history || [];
+    const now = hist.length ? hist[hist.length - 1] : [0, 0, 0];
+    CHARTS.c3.points = hist.map((p) => [p[0], p[1]]);
+    CHARTS.c4.points = hist.map((p) => [p[0], p[2] / 1e6]);
+    $("c3now").textContent = hist.length ? fmt.rate(now[1]) + " /s" : "";
+    $("c4now").textContent = hist.length ? (now[2] / 1e6).toFixed(2) + " Mbit/s" : "";
+    draw(CHARTS.c3); draw(CHARTS.c4);
+    renderProtocols("gwProtocols", "gwProtoHint", s.protocols, s.packets, GW_EMPTY);
+  }
+}
+
+async function pollGw() {
+  try {
+    const snap = await api("/api/gw/state");
+    renderGw(snap);
+    // One poll feeds both tabs: they are two views of the same gateway, and a
+    // second request would only make the two disagree with each other.
+    renderOutput(snap);
+  }
+  catch (e) { /* retried on the next tick */ }
+  clearTimeout(gwPollTimer);
+  if (reloading) return;      // see poll()
+  gwPollTimer = setTimeout(pollGw, gwLastState === "running" ? 1000 : 2500);
+}
+
+/* --------------------------------------------------------------- settings */
+let settings = null;
+
+function renderSettings(data) {
+  settings = data;
+  const saved = data.saved, eff = data.effective || {};
+
+  const bindSel = $("s-bind");
+  const wanted = saved.bind;
+  const options = [
+    ["127.0.0.1", "127.0.0.1 — this host only (use an SSH tunnel)"],
+    ["0.0.0.0", "0.0.0.0 — every address of this host"],
+  ];
+  (data.suggest.addresses || []).forEach((a) => {
+    if (a !== "127.0.0.1") options.push([a, a + " — this address only"]);
+  });
+  if (!options.some(([v]) => v === wanted)) options.push([wanted, wanted]);
+  bindSel.innerHTML = "";
+  options.forEach(([value, label]) => {
+    const o = document.createElement("option");
+    o.value = value; o.textContent = label;
+    bindSel.appendChild(o);
+  });
+  bindSel.value = wanted;
+
+  $("s-port").value = saved.port;
+  $("s-hosts").value = (saved.allow_hosts || []).join(", ");
+  $("s-cert").value = saved.tls.cert || "";
+  $("s-key").value = saved.tls.key || "";
+  $("s-https-enable").checked = !!saved.tls.cert;
+  $("s-tls-fields").classList.toggle("hide", !saved.tls.cert);
+  $("s-token").value = "";
+  $("s-token-clear").checked = false;
+  $("s-token-note").textContent = saved.token_set
+    ? "A token is set. Leave this blank to keep it, or type a new one to replace it."
+    : "No token set. Off loopback, one is generated for you on Save if you "
+      + "leave this blank — shown once, right after saving, below.";
+
+  $("setEffective").textContent = "now: " + (eff.scheme || "http") + "://"
+    + (eff.bind || "?") + ":" + (eff.port || "?")
+    + (eff.token_set ? ", token required" : ", no token");
+  $("setTlsState").textContent = eff.tls ? "on" : "off — plain HTTP";
+
+  // Both services can bind 0.0.0.0; only gui-lan forces it with --bind.
+  const service = (eff.overridden || []).includes("bind") ? "gui-lan" : "gui";
+  $("setRestartCmd").textContent = "docker compose restart " + service;
+
+  const banner = $("setRestartBanner");
+  banner.className = "banner" + (data.restart_needed ? " warn" : "");
+  $("setRestartText").textContent = data.restart_needed
+    ? "Saved settings differ from what is running. Restart the web UI to apply them."
+    : "Saved settings match what is running.";
+  $("setPill").dataset.state = data.restart_needed ? "stopping" : "running";
+  $("setPillText").textContent = data.restart_needed ? "restart to apply" : "in effect";
+
+  $("s-path-note").textContent = data.in_container
+    ? "Paths are resolved inside the container, not on your shell's filesystem: "
+      + "the ./tls directory next to docker-compose.yml appears here as /tls, "
+      + "so use /tls/cert.pem."
+    : "Absolute path on this host.";
+
+  renderCert(data.cert, data.cert_warnings || []);
+
+  $("btnSelfSigned").disabled = !data.openssl;
+  if (!data.openssl) {
+    $("s-cert-note").textContent =
+      "openssl is not available here — point the fields above at a certificate made elsewhere.";
+  }
+
+  markOverrides(eff.overridden || []);
+  $("setPaths").textContent = data.config_path + "\n" + data.tls_dir + "/";
+  if (gwConfig) {
+    const b = gwConfig.serve.bind, p = gwConfig.serve.port;
+    $("setGwListener").textContent = "tcp://" + b + ":" + p
+      + (b === "127.0.0.1" ? "   (gateway host only)" : "   (reachable from the network)");
+  }
+}
+
+function renderCert(cert, warnings) {
+  const box = $("s-cert-info");
+  const warn = $("s-cert-warnings");
+  warn.innerHTML = "";
+  if (!cert || !Object.keys(cert).length) {
+    box.classList.add("hide");
+  } else if (cert.error) {
+    box.classList.remove("hide");
+    box.textContent = "could not be read: " + cert.error;
+  } else {
+    box.classList.remove("hide");
+    const lines = [
+      "subject   " + (cert.subject || "(none)"),
+      "issuer    " + (cert.issuer || "(none)")
+        + (cert.self_signed ? "   — self-signed" : "   — issued by a CA"),
+      "expires   " + (cert.not_after || "?")
+        + (cert.days_left === null || cert.days_left === undefined
+            ? "" : "   (" + cert.days_left + " days)"),
+      "covers    " + (cert.dns || []).concat(cert.ips || []).join(", ") || "(nothing)",
+    ];
+    box.textContent = lines.join("\n");
+  }
+  warnings.forEach((text) => {
+    const el = document.createElement("div");
+    el.className = "banner warn";
+    el.innerHTML = '<span class="ic">!</span>';
+    const span = document.createElement("span");
+    span.textContent = text;
+    el.appendChild(span);
+    warn.appendChild(el);
+  });
+}
+
+const OVERRIDE_FIELDS = {
+  bind: "s-bind", port: "s-port", allow_hosts: "s-hosts",
+  tls: "s-cert", token: "s-token",
+};
+
+function markOverrides(keys) {
+  // Saving a value a flag is forcing would look like it worked and change
+  // nothing after a restart, so say which fields are not yours to set here.
+  document.querySelectorAll(".ovr").forEach((n) => n.remove());
+  keys.forEach((key) => {
+    const el = $(OVERRIDE_FIELDS[key]);
+    if (!el) return;
+    const field = el.closest(".field");
+    if (!field) return;
+    const note = document.createElement("span");
+    note.className = "note ovr";
+    note.style.color = "var(--warning)";
+    note.textContent = "In effect: forced by a command-line flag or environment "
+      + "variable, so saving this here has no effect until that is removed.";
+    field.appendChild(note);
+  });
+}
+
+function collectSettings() {
+  const hosts = $("s-hosts").value.split(/[,\s]+/).filter(Boolean);
+  const httpsOn = $("s-https-enable").checked;
+  const out = {
+    bind: $("s-bind").value,
+    port: Number($("s-port").value) || 8420,
+    allow_hosts: hosts,
+    tls: httpsOn
+      ? { cert: $("s-cert").value.trim(), key: $("s-key").value.trim() }
+      : { cert: "", key: "" },
+  };
+  const token = $("s-token").value.trim();
+  if (token) out.token = token;
+  if ($("s-token-clear").checked) out.clear_token = true;
+  return out;
+}
+
+async function loadSettings() {
+  try { renderSettings(await api("/api/webui")); }
+  catch (e) { toast("Could not read the settings: " + e.message); }
+}
+
+/* ------------------------------------------------------------------ views */
+// Only the left pane switches between Simulator/Gateway/Settings now — the
+// right pane (Simulator + Gateway activity, stacked) is always visible and
+// is never touched here.
+function selectView(view) {
+  document.querySelectorAll("#viewTabs button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+  $("view-sim").classList.toggle("hide", view !== "sim");
+  $("view-gw").classList.toggle("hide", view !== "gw");
+  $("view-set").classList.toggle("hide", view !== "set");
+  $("simControls").classList.toggle("hide", view !== "sim");
+  $("simRun").classList.toggle("hide", view !== "sim");
+  $("gwRun").classList.toggle("hide", view !== "gw");
+  $("setRun").classList.toggle("hide", view !== "set");
+  try { localStorage.setItem("erspan-view", view); } catch (e) {}
+  if (view === "set") { loadSettings(); refreshUsers(); }
+}
+
+/* -------------------------------------------------------------- profiles */
+function renderProfiles(names, selected) {
+  const sel = $("profileSelect");
+  sel.innerHTML = "";
+  const none = document.createElement("option");
+  none.value = ""; none.textContent = names.length ? "— unsaved —" : "— no profiles —";
+  sel.appendChild(none);
+  names.forEach((n) => {
+    const o = document.createElement("option");
+    o.value = n; o.textContent = n;
+    sel.appendChild(o);
+  });
+  sel.value = selected && names.includes(selected) ? selected : "";
+  $("btnDelete").disabled = !sel.value;
+  $("btnSave").disabled = !sel.value;
+}
+
+/* --------------------------------------------------------------- output */
+
+const OUT_EMPTY = "Nothing delivered yet — start the gateway and attach Wireshark.";
+
+function renderOutput(snap) {
+  const srv = snap.server, acct = snap.accounting, d = snap.delivery;
+  $("outHint").textContent = srv
+    ? (srv.connected ? "streaming to " + srv.peer : "listening on tcp/" + srv.port)
+    : "not running";
+
+  if (snap.error) showBanner("err", snap.error, "outBanners");
+
+  const frames = srv ? srv.frames_sent : 0;
+  const octets = srv ? srv.bytes_sent : 0;
+  $("o-frames").textContent = fmt.int(frames);
+  $("o-frames-sub").textContent = srv && srv.clients_served
+    ? fmt.int(srv.clients_served) + (srv.clients_served === 1 ? " reader" : " readers")
+    : "\u00a0";
+  const [ov, ou] = fmt.bytes(octets);
+  $("o-bytes").innerHTML = ov + ' <span class="u">' + ou + "</span>";
+  $("o-bytes-sub").textContent = d && d.avg_bps
+    ? fmt.bits(d.avg_bps) + " average" : "\u00a0";
+
+  const last = d && d.history.length ? d.history[d.history.length - 1] : null;
+  $("o-rate").textContent = last ? fmt.int(last[1]) : "0";
+  $("o-rate-sub").textContent = last
+    ? "frames/s · peak " + fmt.int(d.peak_fps) : "frames/s";
+
+  if (srv && srv.connected) {
+    $("o-client").textContent = "attached";
+    $("o-client-sub").textContent = srv.peer;
+  } else if (srv && srv.listening) {
+    $("o-client").textContent = "waiting";
+    $("o-client-sub").textContent = "tcp/" + srv.port
+      + (srv.refused ? " · " + fmt.int(srv.refused) + " refused" : "");
+  } else {
+    $("o-client").textContent = "\u2014";
+    $("o-client-sub").textContent = "not listening";
+  }
+
+  if (d) {
+    CHARTS.c5.points = d.history.map((h) => [h[0], h[1]]);
+    CHARTS.c6.points = d.history.map((h) => [h[0], h[2] / 1e6]);
+    $("c5now").textContent = last ? fmt.int(last[1]) + " frames/s" : "";
+    $("c6now").textContent = last ? (last[2] / 1e6).toFixed(2) + " Mbit/s" : "";
+    draw(CHARTS.c5); draw(CHARTS.c6);
+  }
+
+  renderAccounting(acct);
+  renderReaders(d ? d.clients : [], frames);
+  if (srv && srv.hint) $("outCmd").textContent = "wireshark -k -i " + srv.hint.split(" -i ").pop();
+}
+
+function renderAccounting(acct) {
+  const tb = $("outAccounting").querySelector("tbody");
+  tb.innerHTML = "";
+  if (!acct || !acct.received) {
+    $("outAcctHint").textContent = "nothing yet";
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.className = "meta";
+    td.colSpan = 3;
+    td.textContent = OUT_EMPTY;
+    tr.appendChild(td); tb.appendChild(tr);
+    $("outBalance").innerHTML = "";
+    return;
+  }
+  $("outAcctHint").textContent = fmt.int(acct.received) + " arrived";
+
+  const rows = [
+    ["Delivered to Wireshark", acct.delivered, "reached the client"],
+    ["Dropped by the ring", acct.dropped,
+     "the reader could not keep up — these are holes in the capture"],
+    ["No client attached", acct.skipped_idle,
+     "discarded on purpose so a client sees live traffic, not a backlog"],
+    ["Still buffered", acct.buffered, "on its way out"],
+  ];
+  rows.forEach(([label, n, why]) => {
+    const tr = document.createElement("tr");
+    const a = document.createElement("td");
+    a.className = "name";
+    a.textContent = label;
+    const b = document.createElement("td");
+    b.className = "meta";
+    b.textContent = why;
+    const c = document.createElement("td");
+    c.className = "act";
+    c.textContent = fmt.int(n)
+      + (acct.received ? "  (" + (n * 100 / acct.received).toFixed(1) + "%)" : "");
+    if (label.startsWith("Dropped") && n) c.style.color = "var(--critical)";
+    tr.appendChild(a); tr.appendChild(b); tr.appendChild(c);
+    tb.appendChild(tr);
+  });
+
+  const box = $("outBalance");
+  box.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "banner " + (acct.balanced ? "ok" : "err");
+  el.innerHTML = '<span class="ic">' + (acct.balanced ? "\u2713" : "!") + "</span>";
+  const span = document.createElement("span");
+  span.textContent = acct.balanced
+    ? fmt.int(acct.received) + " arrived, " + fmt.int(acct.received - acct.difference)
+      + " accounted for — every frame is where it should be."
+    : fmt.int(Math.abs(acct.difference)) + " frames are unaccounted for. That is a "
+      + "bug, not a capacity problem: please report it.";
+  el.appendChild(span);
+  box.appendChild(el);
+}
+
+function renderReaders(clients, framesNow) {
+  const tb = $("outClients").querySelector("tbody");
+  tb.innerHTML = "";
+  $("outClientsEmpty").classList.toggle("hide", !!(clients && clients.length));
+  $("outClientsHint").textContent = clients && clients.length
+    ? clients.length + (clients.length === 1 ? " session" : " sessions") : "";
+  (clients || []).slice().reverse().forEach((c) => {
+    const tr = document.createElement("tr");
+    if (c.until === null) tr.className = "live";
+    const a = document.createElement("td");
+    a.className = "name";
+    a.textContent = c.peer;
+    const b = document.createElement("td");
+    b.className = "meta";
+    const end = c.until ? new Date(c.until * 1000).toLocaleTimeString() : "now";
+    b.textContent = new Date(c.since * 1000).toLocaleTimeString() + " \u2192 " + end;
+    const d = document.createElement("td");
+    d.className = "act";
+    const got = (c.frames_at_end === null ? framesNow : c.frames_at_end)
+                - c.frames_at_start;
+    d.textContent = fmt.int(Math.max(0, got)) + " frames";
+    tr.appendChild(a); tr.appendChild(b); tr.appendChild(d);
+    tb.appendChild(tr);
+  });
+}
+
+$("btnCopyOutCmd").addEventListener("click", copyFrom("outCmd"));
+
+/* ------------------------------------------------------------- accounts */
+
+let AUTH = { user: "", method: "", accounts_exist: false, token_set: false,
+             password_login_possible: false, secure: false };
+
+function renderAuth(auth) {
+  AUTH = auth || AUTH;
+  const signedIn = !!AUTH.user;
+  $("whoGroup").classList.toggle("hide", !signedIn);
+  if (signedIn) $("whoName").textContent = AUTH.user;
+}
+
+function renderUsers(users) {
+  const tb = $("usersTable").querySelector("tbody");
+  tb.innerHTML = "";
+  const last = users.filter((u) => !u.disabled).length <= 1;
+  users.forEach((u) => {
+    const tr = document.createElement("tr");
+    if (u.disabled) tr.className = "off";
+    if (u.name === AUTH.user) tr.className += " me";
+
+    const name = document.createElement("td");
+    name.className = "name";
+    name.textContent = u.name;
+    tr.appendChild(name);
+
+    const meta = document.createElement("td");
+    meta.className = "meta";
+    meta.textContent = u.last_login
+      ? "last signed in " + new Date(u.last_login * 1000).toLocaleString()
+      : "never signed in";
+    tr.appendChild(meta);
+
+    const act = document.createElement("td");
+    act.className = "act";
+
+    const pw = document.createElement("button");
+    pw.className = "ghost";
+    pw.textContent = "Change password";
+    pw.addEventListener("click", () => changePassword(u.name));
+    act.appendChild(pw);
+
+    // The server refuses to remove or disable the last account that can still
+    // sign in; disabling the control says so before the click rather than after.
+    const onlyOne = last && !u.disabled;
+
+    const dis = document.createElement("button");
+    dis.className = "ghost";
+    dis.textContent = u.disabled ? "Enable" : "Disable";
+    dis.disabled = onlyOne;
+    if (onlyOne) dis.title = "the only account that can still sign in";
+    dis.addEventListener("click", async () => {
+      try {
+        const r = await api("/api/users/disable",
+                            { name: u.name, disabled: !u.disabled });
+        renderUsers(r.users);
+        toast((u.disabled ? "Enabled " : "Disabled ") + u.name + ".", true);
+        if (u.name === AUTH.user && !u.disabled) location.reload();
+      } catch (e) { toast(e.message); }
+    });
+    act.appendChild(dis);
+
+    const del = document.createElement("button");
+    del.className = "ghost danger";
+    del.textContent = "Remove";
+    del.disabled = onlyOne;
+    if (onlyOne) del.title = "the only account that can still sign in";
+    let armed = false;
+    del.addEventListener("click", async () => {
+      if (!armed) {
+        armed = true;
+        del.textContent = "Really?";
+        setTimeout(() => { armed = false; del.textContent = "Remove"; }, 4000);
+        return;
+      }
+      try {
+        const r = await api("/api/users/remove", { name: u.name });
+        renderUsers(r.users);
+        toast("Removed " + u.name + ".", true);
+        if (u.name === AUTH.user) location.reload();
+      } catch (e) { toast(e.message); armed = false; del.textContent = "Remove"; }
+    });
+    act.appendChild(del);
+
+    tr.appendChild(act);
+    tb.appendChild(tr);
+  });
+
+  $("usersHint").textContent = users.length
+    ? users.length + (users.length === 1 ? " account" : " accounts")
+    : "none yet";
+  $("usersIntro").textContent = users.length
+    ? (AUTH.password_login_possible
+       ? "Signing in with one of these is the alternative to pasting the token."
+       : "These exist, but a password is not accepted over plain HTTP from "
+         + "another host — set up TLS above and reload over HTTPS to use them.")
+    : "No accounts yet, so the access token is the only way in. Create the "
+      + "first one here or on the host with 'spantap-sim users add <name>'.";
+}
+
+async function changePassword(name) {
+  const password = prompt("New password for " + name
+                          + " (at least 12 characters):");
+  if (password === null) return;
+  try {
+    const r = await api("/api/users/passwd", { name, password });
+    renderUsers(r.users);
+    toast("Password changed for " + name
+          + (r.sessions_closed ? " — signed out of " + r.sessions_closed
+             + " session(s)." : "."), true);
+    if (name === AUTH.user) location.reload();
+  } catch (e) { toast(e.message); }
+}
+
+async function refreshUsers() {
+  try {
+    const r = await api("/api/users");
+    renderUsers(r.users);
+  } catch (e) { toast(e.message); }
+}
+
+$("btnUserAdd").addEventListener("click", async () => {
+  const name = $("u-name").value.trim();
+  const password = $("u-pass").value;
+  if (!name || !password) { toast("A name and a password, please."); return; }
+  try {
+    const r = await api("/api/users/add", { name, password });
+    renderUsers(r.users);
+    $("u-name").value = ""; $("u-pass").value = "";
+    toast("Added " + r.name + ".", true);
+  } catch (e) { toast(e.message); }
+});
+
+$("btnLogout").addEventListener("click", async () => {
+  try { await api("/api/logout", {}); } catch (e) { /* going anyway */ }
+  location.href = "/login";
+});
+
+/* -------------------------------------------------------- uploaded captures */
+
+let STORAGE = { dir: "", writable: false, max_upload: 0 };
+
+function renderCaptures(captures, storage) {
+  if (storage) STORAGE = storage;
+  const sel = $("f-capture");
+  const chosen = $("f-file").value;
+  sel.innerHTML = "";
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = captures.length ? "— none selected —" : "— nothing uploaded yet —";
+  sel.appendChild(none);
+  captures.forEach((c) => {
+    const o = document.createElement("option");
+    o.value = c.path;
+    o.dataset.name = c.name;
+    o.textContent = c.name + "  ·  " + fmt.size(c.size)
+      + (c.readable ? "  ·  " + c.linktype_name : "  ·  unreadable");
+    if (!c.readable) o.title = c.problem;
+    sel.appendChild(o);
+  });
+  // Keep the dropdown agreeing with the path field, which stays the source of
+  // truth: a path typed by hand is legitimate and must not be cleared.
+  sel.value = captures.some((c) => c.path === chosen) ? chosen : "";
+  $("b-cap-delete").disabled = !sel.value;
+  resetDelete();
+
+  // The gateway's own replay picker shares this exact listing — same store,
+  // same dropdown behaviour, kept in sync whenever this one refreshes.
+  const gsel = $("g-replay-select");
+  if (gsel) {
+    const gchosen = $("g-replay-file").value;
+    gsel.innerHTML = "";
+    const gnone = document.createElement("option");
+    gnone.value = "";
+    gnone.textContent = captures.length ? "— none selected —" : "— nothing uploaded yet —";
+    gsel.appendChild(gnone);
+    captures.forEach((c) => {
+      const o = document.createElement("option");
+      o.value = c.path;
+      o.textContent = c.name + "  ·  " + fmt.size(c.size)
+        + (c.readable ? "  ·  " + c.linktype_name : "  ·  unreadable");
+      if (!c.readable) o.title = c.problem;
+      gsel.appendChild(o);
+    });
+    gsel.value = captures.some((c) => c.path === gchosen) ? gchosen : "";
+  }
+
+  const note = $("cap-note");
+  if (!STORAGE.writable) {
+    note.textContent = "Uploads are disabled: " + STORAGE.dir
+      + " is not writable by the spantap process. Mount it read-write, or set "
+      + "SPANTAP_CAPTURE_DIR to a directory it can write.";
+  } else {
+    note.textContent = "Stored in " + STORAGE.dir
+      + (STORAGE.exists ? "" : " (created on first upload)")
+      + (STORAGE.free !== null && STORAGE.free !== undefined
+         ? "  ·  " + fmt.size(STORAGE.free) + " free" : "")
+      + "  ·  up to " + fmt.size(STORAGE.max_upload) + " per upload";
+  }
+  $("f-upload").disabled = !STORAGE.writable;
+  $("b-upload").disabled = !STORAGE.writable;
+  if ($("g-replay-upload")) $("g-replay-upload").disabled = !STORAGE.writable;
+  if ($("b-g-replay-upload")) $("b-g-replay-upload").disabled = !STORAGE.writable;
+  // The Gateway tab's own upload field used to give no reason at all when
+  // disabled — the explanation only ever appeared on the Simulator tab's
+  // cap-note, above, even though both fields are disabled by the exact same
+  // condition (the shared capture store isn't writable). Mirror it here too,
+  // so "I can't select a file" on the Gateway tab has an answer on the
+  // Gateway tab.
+  const gnote = $("g-up-note");
+  if (gnote) {
+    gnote.textContent = STORAGE.writable
+      ? "The file is sent to the host running spantap, not read by your browser."
+      : "Uploads are disabled: " + STORAGE.dir
+        + " is not writable by the spantap process. Mount it read-write, or set "
+        + "SPANTAP_CAPTURE_DIR to a directory it can write.";
+  }
+}
+
+async function refreshCaptures() {
+  try {
+    const r = await api("/api/captures");
+    renderCaptures(r.captures, r.storage);
+  } catch (e) { toast(e.message); }
+}
+
+/** Upload with XHR rather than fetch: only XHR reports progress, and a
+ *  capture is big enough that a bar earns its place. onProgress(pct) is
+ *  optional — shared by both the simulator's and the gateway's upload
+ *  widgets, which each drive their own progress bar. */
+function uploadCapture(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/captures/upload?name=" + encodeURIComponent(file.name));
+    if (TOKEN) xhr.setRequestHeader("X-Spantap-Token", TOKEN);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (ev) => {
+      if (!ev.lengthComputable || !onProgress) return;
+      onProgress(ev.loaded / ev.total * 100);
+    };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status === 200) resolve(data);
+      else reject(new Error(data.error || (xhr.status + " " + xhr.statusText)));
+    };
+    xhr.onerror = () => reject(new Error("the upload connection failed"));
+    xhr.send(file);
+  });
+}
+
+$("b-upload").addEventListener("click", async () => {
+  const file = ($("f-upload").files || [])[0];
+  if (!file) { toast("Choose a capture file first."); return; }
+  if (STORAGE.max_upload && file.size > STORAGE.max_upload) {
+    toast(file.name + " is " + fmt.size(file.size) + "; the limit is "
+          + fmt.size(STORAGE.max_upload) + ".");
+    return;
+  }
+  $("b-upload").disabled = true;
+  $("up-bar").classList.remove("hide");
+  $("up-fill").style.width = "0%";
+  $("up-note").textContent = "Uploading " + file.name + " (" + fmt.size(file.size) + ")…";
+  try {
+    const r = await uploadCapture(file, (pct) => {
+      $("up-fill").style.width = pct.toFixed(1) + "%";
+    });
+    renderCaptures(r.captures, r.storage);
+    // Select what was just uploaded — the whole point of uploading it.
+    $("f-file").value = r.capture.path;
+    $("f-capture").value = r.capture.path;
+    $("b-cap-delete").disabled = false;
+    onChange();
+    $("up-note").textContent = "Stored as " + r.capture.stored_as
+      + (r.capture.readable ? "  ·  " + r.capture.linktype_name : "");
+    toast("Uploaded " + r.capture.stored_as + ".", true);
+    $("f-upload").value = "";
+  } catch (e) {
+    $("up-note").textContent = e.message;
+    toast(e.message);
+  } finally {
+    $("b-upload").disabled = !STORAGE.writable;
+    $("up-bar").classList.add("hide");
+  }
+});
+
+$("b-g-replay-upload").addEventListener("click", async () => {
+  const file = ($("g-replay-upload").files || [])[0];
+  if (!file) { toast("Choose a capture file first."); return; }
+  if (STORAGE.max_upload && file.size > STORAGE.max_upload) {
+    toast(file.name + " is " + fmt.size(file.size) + "; the limit is "
+          + fmt.size(STORAGE.max_upload) + ".");
+    return;
+  }
+  $("b-g-replay-upload").disabled = true;
+  $("g-up-bar").classList.remove("hide");
+  $("g-up-fill").style.width = "0%";
+  $("g-up-note").textContent = "Uploading " + file.name + " (" + fmt.size(file.size) + ")…";
+  try {
+    const r = await uploadCapture(file, (pct) => {
+      $("g-up-fill").style.width = pct.toFixed(1) + "%";
+    });
+    renderCaptures(r.captures, r.storage);
+    // Select what was just uploaded — same reasoning as the simulator's own
+    // upload handler just above.
+    $("g-replay-file").value = r.capture.path;
+    $("g-replay-select").value = r.capture.path;
+    $("g-up-note").textContent = "Stored as " + r.capture.stored_as
+      + (r.capture.readable ? "  ·  " + r.capture.linktype_name : "");
+    toast("Uploaded " + r.capture.stored_as + ".", true);
+    $("g-replay-upload").value = "";
+  } catch (e) {
+    $("g-up-note").textContent = e.message;
+    toast(e.message);
+  } finally {
+    $("b-g-replay-upload").disabled = !STORAGE.writable;
+    $("g-up-bar").classList.add("hide");
+  }
+});
+
+$("f-capture").addEventListener("change", (ev) => {
+  $("b-cap-delete").disabled = !ev.target.value;
+  resetDelete();
+  if (!ev.target.value) return;
+  $("f-file").value = ev.target.value;
+  onChange();
+});
+
+$("g-replay-select").addEventListener("change", (ev) => {
+  if (!ev.target.value) return;
+  $("g-replay-file").value = ev.target.value;
+});
+
+$("b-cap-refresh").addEventListener("click", refreshCaptures);
+
+/* Two-step delete instead of confirm(): a modal dialog blocks the page, and
+   this one sits next to the thing it deletes. */
+let deleteArmed = false;
+function resetDelete() {
+  deleteArmed = false;
+  $("b-cap-delete").textContent = "Delete";
+}
+$("b-cap-delete").addEventListener("click", async () => {
+  const sel = $("f-capture");
+  const name = sel.selectedOptions[0] && sel.selectedOptions[0].dataset.name;
+  if (!name) return;
+  if (!deleteArmed) {
+    deleteArmed = true;
+    $("b-cap-delete").textContent = "Really delete?";
+    setTimeout(resetDelete, 4000);
+    return;
+  }
+  resetDelete();
+  try {
+    const r = await api("/api/captures/delete", { name });
+    if ($("f-file").value === sel.value) { $("f-file").value = ""; onChange(); }
+    renderCaptures(r.captures, r.storage);
+    $("up-note").textContent =
+      "The file is sent to the host running spantap, not read by your browser.";
+    toast("Deleted " + name + ".", true);
+  } catch (e) { toast(e.message); }
+});
+
+/* ------------------------------------------------------------------- init */
+async function init() {
+  const b = await api("/api/bootstrap");
+  $("ver").textContent = "v" + b.version;
+  const sc = $("f-scenario");
+  b.scenarios.forEach((s) => {
+    const o = document.createElement("option"); o.value = s; o.textContent = s;
+    sc.appendChild(o);
+  });
+  // The simulator and the gateway both pick an interface, from the same list.
+  ["f-iface", "g-iface"].forEach((id) => {
+    const sel = $(id);
+    if (!sel) return;
+    const keep = sel.value;
+    sel.innerHTML = "";
+    const blank = document.createElement("option");
+    blank.value = ""; blank.textContent = "— choose an interface —";
+    sel.appendChild(blank);
+    b.interfaces.forEach((i) => {
+      const o = document.createElement("option");
+      o.value = i.name;
+      o.textContent = i.name + "  ·  " + i.state
+        + (i.ipv4 ? "  ·  " + i.ipv4 : "") + (i.mtu ? "  ·  MTU " + i.mtu : "");
+      sel.appendChild(o);
+    });
+    sel.value = keep;
+  });
+  $("g-iface-note").textContent = b.capabilities.capture_tool.ok
+    ? "captured with " + b.capabilities.capture_tool.detail
+    : b.capabilities.capture_tool.detail;
+  $("g-iface").disabled = !b.capabilities.capture_tool.ok;
+
+  renderAuth(b.auth);
+  applyProfile(b.profile);
+  renderProfiles(b.profiles, b.last_used);
+  renderCaptures(b.captures || [], b.storage);
+
+  if (!b.capabilities.raw_socket.ok) {
+    showBanner("warn", "Sending on the wire is not available: "
+      + b.capabilities.raw_socket.detail + ". The pcap-file output works regardless.");
+  }
+  if (!b.capabilities.capture_tool.ok) {
+    var why = b.capabilities.capture_tool.detail || "";
+    // When the tool is present but out of reach the detail is a whole
+    // explanation; prefixing it with "needs a capture tool" would contradict it.
+    showBanner("warn", /is installed but/.test(why)
+      ? "Mirroring a live interface will not work: " + why
+      : "Mirroring a live interface needs a capture tool: " + why);
+  }
+
+  applyGw(b.gateway.config);
+  renderGw(b.gateway.state);
+  renderOutput(b.gateway.state);
+
+  bootstrapped = true;
+  onChange();
+  renderState(b.state);
+  let view = "sim";
+  try { view = localStorage.getItem("erspan-view") || "sim"; } catch (e) {}
+  selectView(["sim", "gw", "set"].includes(view) ? view : "sim");
+  // The right pane is always visible from the start, so every chart in it
+  // needs its first draw now rather than waiting on a tab switch that may
+  // never come (e.g. a visitor who stays on Settings the whole time).
+  ["c1", "c2", "c3", "c4", "c5", "c6"].forEach((id) => CHARTS[id] && draw(CHARTS[id]));
+  poll();
+  pollGw();
+}
+
+/* ----------------------------------------------------------------- events */
+document.querySelectorAll("#sourceSeg button").forEach((b) =>
+  b.addEventListener("click", () => selectSource(b.dataset.source, true)));
+document.querySelectorAll("#outputSeg button").forEach((b) =>
+  b.addEventListener("click", () => selectOutput(b.dataset.mode, true)));
+document.addEventListener("input", (ev) => {
+  if (ev.target.matches("[data-path], #f-passes")) onChange();
+});
+$("f-endless").addEventListener("change", () => {
+  $("f-passes").disabled = $("f-endless").checked;
+  onChange();
+});
+
+$("btnStart").addEventListener("click", async () => {
+  $("btnStart").disabled = true;
+  $("banners").innerHTML = "";
+  try {
+    renderState(await api("/api/start", { profile: collect() }));
+    toast("Running.", true);
+  } catch (e) { toast(e.message); showBanner("err", e.message); }
+  finally { $("btnStart").disabled = false; poll(); }
+});
+
+$("btnStop").addEventListener("click", async () => {
+  $("btnStop").disabled = true;
+  try { renderState(await api("/api/stop", {})); }
+  catch (e) { toast(e.message); }
+  finally { poll(); }
+});
+
+// The prominent switch in the panel is a second control for the same two
+// actions as the header's Start/Stop buttons, not a third one — flipping it
+// just clicks whichever of those is currently the live one, so there is one
+// code path for starting or stopping, not two that could disagree.
+$("simSwitch").addEventListener("change", () => {
+  ($("simSwitch").checked ? $("btnStart") : $("btnStop")).click();
+});
+
+$("profileSelect").addEventListener("change", async (ev) => {
+  const name = ev.target.value;
+  $("btnDelete").disabled = !name; $("btnSave").disabled = !name;
+  if (!name) return;
+  try {
+    const r = await api("/api/profiles/load?name=" + encodeURIComponent(name));
+    applyProfile(r.profile); onChange();
+    toast("Loaded profile “" + name + "”.", true);
+  } catch (e) { toast(e.message); }
+});
+
+async function saveAs(name) {
+  try {
+    const r = await api("/api/profiles/save", { name, profile: collect() });
+    renderProfiles(r.profiles, name);
+    toast("Saved profile “" + name + "”.", true);
+  } catch (e) { toast(e.message); }
+}
+$("btnSave").addEventListener("click", () => {
+  const name = $("profileSelect").value;
+  if (name) saveAs(name);
+});
+$("btnSaveAs").addEventListener("click", () => {
+  const name = prompt("Save this configuration as:", $("profileSelect").value || "lab");
+  if (name) saveAs(name.trim());
+});
+$("btnDelete").addEventListener("click", async () => {
+  const name = $("profileSelect").value;
+  if (!name || !confirm("Delete profile “" + name + "”?")) return;
+  try {
+    const r = await api("/api/profiles/delete", { name });
+    renderProfiles(r.profiles, r.last_used);
+    toast("Deleted “" + name + "”.", true);
+  } catch (e) { toast(e.message); }
+});
+
+$("btnTheme").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme
+    ? root.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("spantap-theme", root.dataset.theme); } catch (e) {}
+  // All six charts are visible at once now (the right pane is permanent),
+  // so a theme flip has to recolor all of them, not just whichever tab
+  // used to be selected.
+  ["c1", "c2", "c3", "c4", "c5", "c6"].forEach((id) => CHARTS[id] && draw(CHARTS[id]));
+});
+try {
+  const saved = localStorage.getItem("spantap-theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+} catch (e) {}
+
+document.querySelectorAll("#viewTabs button").forEach((b) =>
+  b.addEventListener("click", () => selectView(b.dataset.view)));
+
+document.addEventListener("input", (ev) => {
+  if (ev.target.matches("#g-sbind, #g-port")) updateGwCmd();
+});
+
+$("btnGwStart").addEventListener("click", async () => {
+  $("btnGwStart").disabled = true;
+  $("gwBanners").innerHTML = "";
+  try {
+    renderGw(await api("/api/gw/start", { config: collectGw() }));
+    toast("Gateway running — connect Wireshark with the command shown.", true);
+  } catch (e) { toast(e.message); showBanner("err", e.message, "gwBanners"); }
+  finally { $("btnGwStart").disabled = false; pollGw(); }
+});
+
+$("btnGwStop").addEventListener("click", async () => {
+  $("btnGwStop").disabled = true;
+  try { renderGw(await api("/api/gw/stop", {})); }
+  catch (e) { toast(e.message); }
+  finally { pollGw(); }
+});
+
+$("gwSwitch").addEventListener("change", () => {
+  ($("gwSwitch").checked ? $("btnGwStart") : $("btnGwStop")).click();
+});
+
+$("btnGwSave").addEventListener("click", async () => {
+  try {
+    const r = await api("/api/gw/config", { config: collectGw() });
+    applyGw(r.config);
+    toast("Gateway configuration saved.", true);
+  } catch (e) { toast(e.message); }
+});
+
+/* -------------------------------------------------------- settings events */
+$("s-https-enable").addEventListener("change", () => {
+  const on = $("s-https-enable").checked;
+  $("s-tls-fields").classList.toggle("hide", !on);
+  if (!on) { $("s-cert").value = ""; $("s-key").value = ""; }
+});
+
+$("btnSetSave").addEventListener("click", async () => {
+  $("btnSetSave").disabled = true;
+  $("setBanners").innerHTML = "";
+  try {
+    const r = await api("/api/webui", { settings: collectSettings() });
+    renderSettings(r);
+    if (r.urls && r.urls.length) {
+      $("setUrlCmd").textContent = r.urls[0];
+      $("setUrlBox").classList.remove("hide");
+    } else {
+      $("setUrlBox").classList.add("hide");
+    }
+    toast("Settings saved. Restart the web UI to apply them.", true);
+  } catch (e) { toast(e.message); showBanner("err", e.message, "setBanners"); }
+  finally { $("btnSetSave").disabled = false; }
+});
+
+$("btnGenToken").addEventListener("click", () => {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  $("s-token").value = btoa(String.fromCharCode(...bytes))
+    .replace(/[+/=]/g, "").slice(0, 28);
+  $("s-token").select();
+  toast("Copy this somewhere safe — it is not shown again after saving.", true);
+});
+
+$("btnSelfSigned").addEventListener("click", async () => {
+  const btn = $("btnSelfSigned");
+  btn.disabled = true;
+  $("s-cert-note").textContent = "generating…";
+  try {
+    const names = $("s-hosts").value.split(/[,\s]+/).filter(Boolean);
+    const r = await api("/api/webui/selfsigned", {
+      names, addresses: (settings && settings.suggest.addresses) || [],
+    });
+    $("s-cert").value = r.cert;
+    $("s-key").value = r.key;
+    $("s-cert-note").textContent = "valid " + r.days + " days, covers "
+      + r.dns.concat(r.ips).join(", ") + " — press Save settings, then restart.";
+    toast("Certificate generated.", true);
+  } catch (e) {
+    $("s-cert-note").textContent = e.message;
+    toast(e.message);
+  } finally { btn.disabled = false; }
+});
+
+function readFileText(input) {
+  const file = input.files && input.files[0];
+  if (!file) return Promise.resolve("");
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("could not read " + file.name));
+    reader.readAsText(file);
+  });
+}
+
+$("btnTlsUpload").addEventListener("click", async () => {
+  const btn = $("btnTlsUpload");
+  try {
+    const cert = await readFileText($("f-cert"));
+    if (!cert) { toast("Choose a certificate file first."); return; }
+    const key = await readFileText($("f-key"));
+    btn.disabled = true;
+    $("s-cert-note").textContent = "uploading…";
+    const r = await api("/api/webui/tls/upload", { cert, key });
+    $("s-cert").value = r.cert;
+    $("s-key").value = r.key;
+    $("s-https-enable").checked = true;
+    $("s-tls-fields").classList.remove("hide");
+    $("f-cert").value = "";
+    $("f-key").value = "";
+    renderCert(r.info, []);
+    $("s-cert-note").textContent = "uploaded — press Save settings, then restart.";
+    toast("Certificate uploaded.", true);
+  } catch (e) {
+    $("s-cert-note").textContent = e.message;
+    toast(e.message);
+  } finally { btn.disabled = false; }
+});
+
+$("btnCopyUrl").addEventListener("click", copyFrom("setUrlCmd"));
+
+function copyFrom(id) {
+  return async () => {
+    const text = $(id).textContent;
+    try { await navigator.clipboard.writeText(text); toast("Copied.", true); }
+    catch (e) {
+      const range = document.createRange();
+      range.selectNodeContents($(id));
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      toast("Select and copy the highlighted command.");
+    }
+  };
+}
+$("btnCopyRestart").addEventListener("click", copyFrom("setRestartCmd"));
+$("btnCopyRescue").addEventListener("click", (ev) => {
+  const code = ev.target.previousElementSibling;
+  navigator.clipboard.writeText(code.textContent)
+    .then(() => toast("Copied.", true))
+    .catch(() => toast("Select and copy the command."));
+});
+
+$("btnCopyCmd").addEventListener("click", async () => {
+  const text = $("gwCmd").textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Copied.", true);
+  } catch (e) {
+    // Clipboard access needs a secure context; plain http://127.0.0.1 counts in
+    // most browsers, but not all, so fall back to selecting the text.
+    const range = document.createRange();
+    range.selectNodeContents($("gwCmd"));
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+    toast("Select and copy the highlighted command.");
+  }
+});
+
+window.addEventListener("resize", () => {
+  ["c1", "c2", "c3", "c4", "c5", "c6"].forEach((id) => CHARTS[id] && draw(CHARTS[id]));
+});
+
+chart("c1", "--series-1", "pkt/s");
+chart("c2", "--series-1", "Mbit/s");
+// Single series per chart, so colour carries no identity — the blue slot is
+// the one that clears 3:1 against both surfaces, so every chart uses it.
+chart("c3", "--series-1", "frames/s");
+chart("c4", "--series-1", "Mbit/s");
+// A different hue from the arrival charts on purpose: the Output tab answers
+// a different question, and the two must not be mistaken for each other in a
+// screenshot.
+chart("c5", "--series-3", "frames/s");
+chart("c6", "--series-3", "Mbit/s");
+init().catch((e) => { toast("Could not reach spantap: " + e.message); });
+</script>
+</body>
+</html>

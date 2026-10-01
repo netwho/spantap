@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 260" width="960" height="260" role="img" aria-label="spantap logo lockup">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101a2e"/>
+      <stop offset="1" stop-color="#070b14"/>
+    </linearGradient>
+    <linearGradient id="jack" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7df9ff"/>
+      <stop offset="1" stop-color="#2f7dff"/>
+    </linearGradient>
+    <linearGradient id="pins" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#1d9bff"/>
+      <stop offset="1" stop-color="#7dffc0"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="960" height="260" fill="#070b14"/>
+
+  <!-- icon -->
+  <g transform="translate(30,16) scale(0.89)">
+    <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+    <rect x="1.5" y="1.5" width="253" height="253" rx="54.5" fill="none" stroke="#7df9ff" stroke-opacity="0.18"/>
+    <g filter="url(#soft)">
+      <path d="M76 48 H180 A8 8 0 0 1 188 56 V134 A8 8 0 0 1 180 142 H152 V168 A6 6 0 0 1 146 174 H110 A6 6 0 0 1 104 168 V142 H76 A8 8 0 0 1 68 134 V56 A8 8 0 0 1 76 48 Z"
+            fill="#0b1524" stroke="url(#jack)" stroke-width="6" stroke-linejoin="round"/>
+    </g>
+    <g fill="url(#pins)">
+      <rect x="79"  y="56" width="6" height="28" rx="3"/>
+      <rect x="92"  y="56" width="6" height="44" rx="3"/>
+      <rect x="106" y="56" width="6" height="20" rx="3"/>
+      <rect x="119" y="56" width="6" height="52" rx="3"/>
+      <rect x="133" y="56" width="6" height="36" rx="3"/>
+      <rect x="146" y="56" width="6" height="58" rx="3"/>
+      <rect x="160" y="56" width="6" height="26" rx="3"/>
+      <rect x="173" y="56" width="6" height="42" rx="3"/>
+    </g>
+    <path d="M20 206 H226" stroke="#ffb347" stroke-width="6" stroke-linecap="round" fill="none"/>
+    <polygon points="222,196 240,206 222,216" fill="#ffb347"/>
+    <g fill="#ffd98a">
+      <rect x="38" y="200" width="11" height="12" rx="3"/>
+      <rect x="62" y="200" width="11" height="12" rx="3"/>
+      <rect x="86" y="200" width="11" height="12" rx="3"/>
+    </g>
+    <circle cx="128" cy="206" r="9" fill="#070b14" stroke="#7df9ff" stroke-width="5"/>
+    <path d="M128 197 V190" stroke="#7df9ff" stroke-width="6" stroke-linecap="round"/>
+    <polygon points="118,192 128,176 138,192" fill="#7df9ff" filter="url(#soft)"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="290" y="140" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="92" font-weight="700" letter-spacing="-2">
+    <tspan fill="#7df9ff">span</tspan><tspan fill="#f2f6ff">tap</tspan>
+  </text>
+  <text x="294" y="182" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="22" font-weight="500" letter-spacing="4.5" fill="#8aa0c0">
+    MIRROR THE WIRE · ANALYZE ANYWHERE
+  </text>
+</svg>

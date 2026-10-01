@@ -1,0 +1,241 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+#   docker compose run --rm sim doctor
+#   docker compose up sim                 # runs the command below
+#   docker compose run --rm capture       # mirror a host interface
+#
+# host networking is required for anything that touches a real interface:
+# without it the container only sees its own veth.
+#
+# Where this directory lives does not matter — it is the build context, the
+# compose project root, and the host side of the ./captures and ./tls mounts;
+# nothing else reads it. What DOES matter is the project name, because the
+# config volume is named after it (<project>_erspan-config). Pin it in .env
+#
+#   COMPOSE_PROJECT_NAME=spantap
+#
+# and you can move or rename the directory without losing your settings.
+#
+# NOTE for anyone upgrading from erspan-sim: the config volume's own key
+# deliberately stayed "erspan-config" through the rename (below), so the same
+# volume keeps being found under <project>_erspan-config — pinning
+# COMPOSE_PROJECT_NAME as above (to whatever it already was) is all an
+# upgrade needs; nothing to migrate by hand. spantap notices its old-named
+# data inside that volume and adopts it in place the first time it runs.
+#
+# The container runs as uid/gid 10001 (unchanged across the rename). Files
+# you bind-mount for it to read — a TLS key, say — must be readable by that
+# id:
+#   sudo chown 10001:10001 tls/key.pem && chmod 0640 tls/key.pem
+#
+# PICK ONE UI SERVICE. `gui` (loopback) and `gui-lan` (reachable, with a token)
+# are two ways to run the same thing on the same port, so running both leaves
+# the second one crash-looping on "address already in use".
+
+services:
+  sim:
+    build: .
+    image: spantap:0.9.3
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    # Sends to a gateway on this same host (127.0.0.1) by default. For a
+    # receiver elsewhere, change --dst, then: docker compose up sim
+    command: ["synth", "--dst", "127.0.0.1", "--session-id", "1", "--pps", "100",
+              "--stats-interval", "30"]
+    restart: unless-stopped
+
+  # The gateway: ERSPAN (or a local interface — see gateway-live below) in,
+  # PCAP-over-IP out on tcp/57012.
+  #   docker compose --profile gateway up gateway
+  #   wireshark -k -i TCP@127.0.0.1:57012
+  gateway:
+    build: .
+    image: spantap:0.9.3
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    volumes:
+      - erspan-config:/var/lib/spantap/.config
+    entrypoint: ["spantap-gw"]
+    command: ["run", "--stats-interval", "30"]
+    profiles: ["gateway"]
+    restart: unless-stopped
+
+  # The same gateway, fed by a local interface instead of a switch mirror.
+  # Needs NET_ADMIN as well, for promiscuous mode.
+  #
+  # The tcp/57012 exclusion is not optional and not configurable: the frames
+  # this writes to Wireshark leave by the interface it is capturing, so
+  # without it the gateway captures its own output, sends that, captures it
+  # again — and the link saturates in seconds. spantap-gw builds the filter
+  # around the port it actually binds.
+  #
+  # The interface is eth0 unless SPANTAP_IFACE says otherwise — set it in .env
+  # (`ip -br link` lists them), e.g. SPANTAP_IFACE=ens18.
+  gateway-live:
+    build: .
+    image: spantap:0.9.3
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    volumes:
+      - erspan-config:/var/lib/spantap/.config
+    entrypoint: ["spantap-gw"]
+    command: ["run", "--iface", "${SPANTAP_IFACE:-eth0}", "--stats-interval", "30"]
+    profiles: ["gateway-live"]
+    restart: unless-stopped
+
+  # The configuration and monitoring web UI, on tcp/8420 on every address
+  # (0.0.0.0) of this host. A token is generated on first start and kept in
+  # the config volume; `docker compose --profile gui logs gui` prints the
+  # URLs with it. Add "--bind", "127.0.0.1" to the command for local only.
+  # Both the simulator and the gateway (either source) are driven from here.
+  gui:
+    build: .
+    image: spantap:0.9.3
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    volumes:
+      - erspan-config:/var/lib/spantap/.config
+      # Read-WRITE, unlike the other services: the UI uploads captures here.
+      # The container runs as 10001:10001, so the host directory has to let
+      # that uid write — 'make captures' arranges it. Without that the UI
+      # still runs and still replays; it just says uploads are disabled.
+      - ./captures:/var/lib/spantap/captures
+      # Drop your own CA-issued certificate and key in ./tls and point the
+      # Settings tab at /tls/cert.pem and /tls/key.pem. Leave it empty to use
+      # a self-signed one generated from the UI into the config volume.
+      - ./tls:/tls:ro
+    command: ["gui", "--no-open"]
+    profiles: ["gui"]
+    restart: unless-stopped
+
+  # The same UI with the bind and the token pinned from outside: 0.0.0.0 and
+  # SPANTAP_TOKEN from .env, whatever the Settings tab has saved. (`gui` also
+  # binds 0.0.0.0 by default, with a token it generates itself.) Run one or
+  # the other, not both — they share port 8420. Read the security notes in README.md's "Reaching it from another host"
+  # section before using this.
+  #
+  #   echo "SPANTAP_TOKEN=$(openssl rand -base64 24 | tr -d /+=)" >> .env
+  #   docker compose --profile gui-lan up -d gui-lan
+  #
+  # Then open http://<this host's IP>:8420/ and finish the setup on the
+  # Settings tab: DNS names, and a TLS certificate it can generate for you.
+  # Those are stored in the config volume, so afterwards a single
+  #   docker compose restart gui-lan
+  # applies them. Only the bind address and the token are forced here; the
+  # Settings tab says so rather than letting you save a value that cannot win.
+  #
+  # NOTE: `restart` re-runs the existing container and therefore the image it
+  # was created from. After rebuilding the image, use
+  #   docker compose --profile gui-lan up -d --force-recreate gui-lan
+  # or the container silently keeps running the old code.
+  gui-lan:
+    build: .
+    image: spantap:0.9.3
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    volumes:
+      - erspan-config:/var/lib/spantap/.config
+      # Read-write: see the note on the gui service. Uploading is guarded by
+      # the same token and TLS as everything else this service exposes.
+      - ./captures:/var/lib/spantap/captures
+      # Your own CA-issued certificate and key go here; point the Settings tab
+      # at /tls/cert.pem and /tls/key.pem. Leave the directory empty to use a
+      # self-signed certificate generated from the UI into the config volume.
+      - ./tls:/tls:ro
+    environment:
+      # Empty by default, deliberately: Compose interpolates every service's
+      # variables up front, before profile filtering, so a REQUIRED
+      # (${VAR:?...}) value here used to fail every compose command in this
+      # file — `docker compose up sim`, `ps`, even `build` — for anyone who
+      # had not yet set SPANTAP_TOKEN, whether or not they ever intended to
+      # run gui-lan at all. Left as ${SPANTAP_TOKEN:-} it interpolates fine
+      # either way, and the entrypoint below enforces it only for this
+      # service. Compose reads .env itself before this file is interpreted,
+      # so an upgrade from erspan-sim needs ERSPAN_SIM_TOKEN renamed to
+      # SPANTAP_TOKEN there too — the app accepts either name once it is
+      # actually running, but this substitution does not.
+      SPANTAP_TOKEN: ${SPANTAP_TOKEN:-}
+    # Refuses to start rather than quietly exposing an unauthenticated UI —
+    # done here rather than as a Compose-level ${VAR:?...} check (see the
+    # note on SPANTAP_TOKEN above) so it affects only gui-lan.
+    entrypoint:
+      - sh
+      - -c
+      - 'test -n "$$SPANTAP_TOKEN" || { echo "set SPANTAP_TOKEN in .env to a long random string" >&2; exit 1; }; exec spantap-sim "$@"'
+      - sh
+    command: ["gui", "--no-open", "--bind", "0.0.0.0"]
+    profiles: ["gui-lan"]
+    restart: unless-stopped
+
+  # Mirror a real host interface. Needs NET_ADMIN as well, for promiscuous mode.
+  capture:
+    build: .
+    image: spantap:0.9.3
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    command: ["live", "--iface", "eth0", "--dst", "127.0.0.1",
+              "--filter", "not port 22", "--stats-interval", "30"]
+    profiles: ["capture"]
+    restart: unless-stopped
+
+  # Replay a capture file from ./captures, no privileges at all.
+  replay:
+    build: .
+    image: spantap:0.9.3
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    volumes:
+      - ./captures:/var/lib/spantap/captures:ro
+    command: ["replay", "captures/sample.pcapng", "--dst", "127.0.0.1",
+              "--loop", "0", "--speed", "1"]
+    profiles: ["replay"]
+
+  # spantap-lite: the same capture-to-PCAP-over-IP pipeline as `gateway-live`,
+  # with none of the rest of this image's surface — no web UI, no accounts, no
+  # simulator, no ERSPAN. Configure once (with `run`, not `up`), then start:
+  #
+  #   docker compose run --rm lite configure          # asks; or, scripted:
+  #   docker compose run --rm lite configure --non-interactive --iface ens18
+  #   docker compose run --rm lite configure --non-interactive \
+  #       --replay-file demo.pcapng        # a file in ./captures on the host
+  #   docker compose --profile lite up -d lite
+  #   wireshark -k -i TCP@<this host>:57012
+  #
+  # Settings are saved to the same config volume as the gateway, in their own
+  # lite.json — 'docker compose run --rm lite configure' again to change them,
+  # then 'docker compose --profile lite restart lite'. It serves tcp/57012 like
+  # `gateway` and `gateway-live`, so run only one of the three.
+  lite:
+    build: .
+    image: spantap:0.9.3
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    volumes:
+      - erspan-config:/var/lib/spantap/.config
+      # Files to replay go in ./captures on the host. Read-write, so an
+      # optional local save (--save-file /var/lib/spantap/captures/lite.pcap)
+      # lands there too rather than inside the container, where a recreate
+      # would lose it. The container's uid 10001 needs write access to the
+      # host directory for that — install.sh / 'make captures' arrange it.
+      - ./captures:/var/lib/spantap/captures
+    entrypoint: ["spantap-lite"]
+    command: ["start", "--stats-interval", "30"]
+    profiles: ["lite"]
+    restart: unless-stopped
+
+volumes:
+  # Key intentionally unchanged from erspan-sim — see the note above.
+  erspan-config:

@@ -1,0 +1,4 @@
+[console_scripts]
+spantap-gw = spantap.gateway.cli:main
+spantap-lite = spantap.lite.cli:main
+spantap-sim = spantap.cli:main
